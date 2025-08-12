@@ -1,6 +1,6 @@
 python3 STICI_V1.1.py \
     --mode train \
-    --ref ./data/hapgen/22merged.vcf.gz \
+    --ref ./data/hapgen/22con.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 10 \
