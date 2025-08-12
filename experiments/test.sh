@@ -1,6 +1,6 @@
 python3 STICI_V1.1.py \
     --mode train \
-    --ref ./data/STI_benchmark_datasets/ALL.chr22.mergedSV.v8.20130502.svs.genotypes.vcf.gz \
+    --ref ./data/hapgen/EGmerged.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 10 \
