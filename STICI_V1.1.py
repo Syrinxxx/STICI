@@ -23,7 +23,7 @@ python3 STICI_V1.1.py --mode train --which-chunk 1 --save-dir ./alaki --ref ./da
 python3 STICI_V1.1.py --save-dir ./alaki --ref ./data/test_purpose_datasets/Chr22_Dels_train_fold_1.vcf --min-mr 0.8 --max-mr 0.8 --na-heads 16 --embed-dim 128 --batch-size-per-gpu 4 --tihp 1 --verbose 1 --cs 2048 --co 64 --sites-per-model 10240 --lr 0.002 --restart-training 1
 python3 STICI_V1.1.py --save-dir ./alaki --ref ./data/test_purpose_datasets/Chr22_SVs_train_fold_1.vcf --min-mr 0.8 --max-mr 0.8 --na-heads 16 --embed-dim 128 --batch-size-per-gpu 4 --tihp 1 --verbose 1 --cs 2048 --co 64 --sites-per-model 10240 --lr 0.002 --restart-training 1
 '''
-
+import gc
 import argparse
 import datatable as dt
 import gzip
@@ -1154,9 +1154,12 @@ def train_the_model(args) -> None:
                                                 offset_before=offset_before,
                                                 offset_after=offset_after, training=False,
                                                 masking_rates=(args.min_mr, args.max_mr))
+        del ref_set
+        gc.collect()
+
         steps_per_epoch = train_sample_count // BATCH_SIZE
         validation_steps = len(x_valid_indices) // BATCH_SIZE
-        del ref_set
+        
         K.clear_session()
         callbacks = create_callbacks(save_path=f"{args.save_dir}/models/w_{w}/cp.ckpt")
         model_args = {
@@ -1177,6 +1180,12 @@ def train_the_model(args) -> None:
                                 validation_steps=validation_steps,
                                 callbacks=callbacks, verbose=args.verbose)
             model.save(f"{args.save_dir}/models/w_{w}.ckpt")
+
+            del model
+            del train_dataset
+            del valid_dataset
+            gc.collect()
+
             # tf.saved_model.save(model, f"{args.save_dir}/models/w_{w}.keras")
             chunks_done[w] = True
             save_chunk_status(args.save_dir, chunks_done)
