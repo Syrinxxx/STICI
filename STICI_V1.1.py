@@ -612,9 +612,9 @@ class DataReader:
                     else:
                         data_header = line
                         break
-        else:
             if data_header is None:
                 raise IOError("The file only contains comments!")
+        else:
             df = dt.fread(file=file_path,
                         sep=separator, header=True, skip_to_line=line_counter + 1)
             df = df.to_pandas()  # .astype('category')
