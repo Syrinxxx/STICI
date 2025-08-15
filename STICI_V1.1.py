@@ -598,7 +598,7 @@ class DataReader:
         line_counter = 0
         root, ext = os.path.splitext(file_path)
         
-        if not mode == "train":
+        if mode == "train":
             with gzip.open(file_path, 'rt') if ext == '.gz' else open(file_path, 'rt') as f_in:
                 # skip info
                 while True:
@@ -614,7 +614,10 @@ class DataReader:
                         break
             if data_header is None:
                 raise IOError("The file only contains comments!")
+            
+            print('>'*9, f"line_counter: {line_counter}", '<'*9)
         else:
+            line_counter = 5009
             df = dt.fread(file=file_path,
                         sep=separator, header=True, skip_to_line=line_counter + 1)
             df = df.to_pandas()  # .astype('category')
