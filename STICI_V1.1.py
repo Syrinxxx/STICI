@@ -583,7 +583,7 @@ class DataReader:
         ## Idea: keep track of possible alleles in each variant, and filter the predictions based on that
 
     def __read_csv(self, file_path, is_vcf=False, is_reference=False, separator="\t", first_column_is_index=True,
-                   comments="##") -> pd.DataFrame:
+                   comments="##", mode='train') -> pd.DataFrame:
         """
         In this form the data should not have more than a column for ids. The first column can be either sample ids or variant ids. In case of latter, make sure to pass :param variants_as_columns=True. Example of sample input file:
         ## Comment line 0
@@ -597,27 +597,30 @@ class DataReader:
         path_sep = "/" if "/" in file_path else os.path.sep
         line_counter = 0
         root, ext = os.path.splitext(file_path)
-        with gzip.open(file_path, 'rt') if ext == '.gz' else open(file_path, 'rt') as f_in:
-            # skip info
-            while True:
-                line = f_in.readline()
-                if line.startswith(comments):
-                    line_counter += 1
-                    if is_reference:
-                        self.ref_n_header_lines.append(line)
+        
+        if not mode == "train":
+            with gzip.open(file_path, 'rt') if ext == '.gz' else open(file_path, 'rt') as f_in:
+                # skip info
+                while True:
+                    line = f_in.readline()
+                    if line.startswith(comments):
+                        line_counter += 1
+                        if is_reference:
+                            self.ref_n_header_lines.append(line)
+                        else:
+                            self.target_n_header_lines.append(line)
                     else:
-                        self.target_n_header_lines.append(line)
-                else:
-                    data_header = line
-                    break
-        if data_header is None:
-            raise IOError("The file only contains comments!")
-        df = dt.fread(file=file_path,
-                      sep=separator, header=True, skip_to_line=line_counter + 1)
-        df = df.to_pandas()  # .astype('category')
-        if first_column_is_index:
-            df.set_index(df.columns[0], inplace=True)
-        return df
+                        data_header = line
+                        break
+        else:
+            if data_header is None:
+                raise IOError("The file only contains comments!")
+            df = dt.fread(file=file_path,
+                        sep=separator, header=True, skip_to_line=line_counter + 1)
+            df = df.to_pandas()  # .astype('category')
+            if first_column_is_index:
+                df.set_index(df.columns[0], inplace=True)
+            return df
 
     def __find_file_extension(self, file_path, file_format, delimiter):
         # Default assumption
@@ -1228,7 +1231,7 @@ def impute_the_target(args):
         args.cs = training_args["cs"]
         args.co = training_args["co"]
 
-    dr = DataReader()
+    dr = DataReader(mode='impute')
     dr.assign_training_set(file_path=args.ref,
                            target_is_gonna_be_phased_or_haps=args.tihp,
                            variants_as_columns=args.ref_vac,
