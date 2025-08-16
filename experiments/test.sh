@@ -1,6 +1,6 @@
 python3 STICI_V1.1.py \
     --mode train \
-    --ref ./data/hapgen/22con.vcf.gz \
+    --ref ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 10 \
