@@ -583,7 +583,7 @@ class DataReader:
         ## Idea: keep track of possible alleles in each variant, and filter the predictions based on that
 
     def __read_csv(self, file_path, is_vcf=False, is_reference=False, separator="\t", first_column_is_index=True,
-                   comments="##", mode='train') -> pd.DataFrame:
+                   comments="##") -> pd.DataFrame:
         """
         In this form the data should not have more than a column for ids. The first column can be either sample ids or variant ids. In case of latter, make sure to pass :param variants_as_columns=True. Example of sample input file:
         ## Comment line 0
@@ -597,29 +597,25 @@ class DataReader:
         path_sep = "/" if "/" in file_path else os.path.sep
         line_counter = 0
         root, ext = os.path.splitext(file_path)
-        
-        if mode != "train":
-            with gzip.open(file_path, 'rt') if ext == '.gz' else open(file_path, 'rt') as f_in:
-                # skip info
-                while True:
-                    line = f_in.readline()
-                    if line.startswith(comments):
-                        line_counter += 1
-                        if is_reference:
-                            self.ref_n_header_lines.append(line)
-                        else:
-                            self.target_n_header_lines.append(line)
+
+        with gzip.open(file_path, 'rt') if ext == '.gz' else open(file_path, 'rt') as f_in:
+            # skip info
+            while True:
+                line = f_in.readline()
+                if line.startswith(comments):
+                    line_counter += 1
+                    if is_reference:
+                        self.ref_n_header_lines.append(line)
                     else:
-                        data_header = line
-                        break
+                        self.target_n_header_lines.append(line)
+                else:
+                    data_header = line
+                    break
             if data_header is None:
                 raise IOError("The file only contains comments!")
-            
-            print('>'*9, f"line_counter: {line_counter}", '<'*9)
-        else:
-            line_counter = 5
+
             df = dt.fread(file=file_path,
-                        sep=separator, header=True, skip_to_line=line_counter + 1)
+                      sep=separator, header=True, skip_to_line=line_counter + 1, fill=True)
             df = df.to_pandas()  # .astype('category')
             if first_column_is_index:
                 df.set_index(df.columns[0], inplace=True)
@@ -725,7 +721,8 @@ class DataReader:
             self.reference_panel.iloc[:, self.ref_sample_value_index - 1:].replace(phased_to_unphased_dict,
                                                                                    inplace=True)
 
-        self.genotype_vals = np.unique(genotype_vals)
+        self.genotype_vals = np.unique([g for g in genotype_vals if g is not None])
+        # self.genotype_vals = np.unique(genotype_vals)
         self.alleles = get_diploid_allels(self.genotype_vals) if not self.ref_is_hap else self.genotype_vals
         self.allele_count = len(self.alleles)
         self.MISSING_VALUE = self.allele_count if self.is_phased else len(self.genotype_vals)
@@ -1234,7 +1231,7 @@ def impute_the_target(args):
         args.cs = training_args["cs"]
         args.co = training_args["co"]
 
-    dr = DataReader(mode='impute')
+    dr = DataReader()
     dr.assign_training_set(file_path=args.ref,
                            target_is_gonna_be_phased_or_haps=args.tihp,
                            variants_as_columns=args.ref_vac,
