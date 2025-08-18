@@ -1172,6 +1172,7 @@ def train_the_model(args) -> None:
 
         steps_per_epoch = train_sample_count // BATCH_SIZE
         validation_steps = len(x_valid_indices) // BATCH_SIZE
+        pprint(f"Steps per epoch: {steps_per_epoch}, Validation steps: {validation_steps}")
         
         K.clear_session()
         callbacks = create_callbacks(save_path=f"{args.save_dir}/models/w_{w}/cp.ckpt")
@@ -1186,6 +1187,7 @@ def train_the_model(args) -> None:
             "use_r2": args.use_r2,
         }
         with strategy.scope():
+            pprint(f"Creating model with args: {model_args}")
             model = create_model(model_args)
             history = model.fit(train_dataset, steps_per_epoch=steps_per_epoch,
                                 epochs=NUM_EPOCHS,
