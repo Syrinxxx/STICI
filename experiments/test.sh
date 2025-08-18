@@ -5,7 +5,7 @@ python3 STICI_V1.1.py \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 1 \
-    --batch-size-per-gpu 3 \
+    --batch-size-per-gpu 2 \
 
 
 
