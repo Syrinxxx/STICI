@@ -4,7 +4,7 @@ python3 STICI_V1.1.py \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
-    --epochs 1 \
+    --epochs 2 \
     --batch-size-per-gpu 3 \
 
 # python3 STICI_V1.1.py \
