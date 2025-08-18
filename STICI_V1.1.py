@@ -1195,17 +1195,22 @@ def train_the_model(args) -> None:
                                 validation_data=valid_dataset,
                                 validation_steps=validation_steps,
                                 callbacks=callbacks,
-                                # callbacks=[
-                                #     *callbacks,
-                                #     WandbCallback(
-                                #         monitor="val_loss",
-                                #         log_weights=True,
-                                #         log_gradients=False,
-                                #         save_model=True,
-                                #         save_freq='epoch',
-                                #     )
-                                # ], 
                                 verbose=args.verbose)
+            # history = model.fit(train_dataset, steps_per_epoch=steps_per_epoch,
+            #                     epochs=NUM_EPOCHS,
+            #                     validation_data=valid_dataset,
+            #                     validation_steps=validation_steps,
+            #                     callbacks=[
+            #                         *callbacks,
+            #                         WandbCallback(
+            #                             monitor="val_loss",
+            #                             log_weights=True,
+            #                             log_gradients=False,
+            #                             save_model=True,
+            #                             save_freq='epoch',
+            #                         )
+            #                     ], 
+            #                     verbose=args.verbose)
             model.save(f"{args.save_dir}/models/w_{w}.ckpt")
 
             del model
