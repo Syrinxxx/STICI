@@ -1,22 +1,14 @@
 python3 STICI_V1.1.py \
     --mode train \
+    --restart-training 1 \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
-    --epochs 10 \
-    --min-mr 0.85 \
-    --max-mr 0.95 \
-    --cs 2048 \
-    --sites-per-model 10240 \
-    --co 64 \
-    --na-heads 16 \
-    --embed-dim 128 \
+    --epochs 1 \
+    --wandb-run-name "bs3_epoch1 test" \
     --batch-size-per-gpu 3 \
-    --tihp 1 \
-    --lr 0.002 \ 
-    --restart-training 1 \
-    --wandb-run-name "bs3_epoch1" \
-    --verbose 1 \
+
+
 
 
 # python3 STICI_V1.1.py \
