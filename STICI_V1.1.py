@@ -54,8 +54,7 @@ from tqdm import tqdm
 from typing import Union
 
 import wandb
-from wandb.keras import WandbCallback
-
+from wandb.integration.keras import WandbCallback
 
 class bcolors:
     HEADER = '\033[95m'
