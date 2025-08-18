@@ -53,6 +53,9 @@ from tensorflow.python.saved_model import tag_constants
 from tqdm import tqdm
 from typing import Union
 
+import wandb
+from wandb.keras import WandbCallback
+
 
 class bcolors:
     HEADER = '\033[95m'
@@ -1100,6 +1103,14 @@ def get_func_from_saved_model(saved_model_dir):
 
 
 def train_the_model(args) -> None:
+    # Initialise wandb
+    wandb.init(
+        project="STICI",
+        name = args.wandb_run_name,
+        # name=f"chunk{args.which_chunk}_embed{args.embed_dim}_heads{args.na_heads}",  # Experiment name
+        config=args.__dict__,  # record all the arguments
+        tags=["imputation", "transformer"],  # tags
+    )
     if args.restart_training:
         clear_dir(args.save_dir)
     assert args.max_mr > 0
@@ -1181,7 +1192,14 @@ def train_the_model(args) -> None:
                                 epochs=NUM_EPOCHS,
                                 validation_data=valid_dataset,
                                 validation_steps=validation_steps,
-                                callbacks=callbacks, verbose=args.verbose)
+                                callbacks=[
+                                    *callbacks,
+                                    WandbCallback(
+                                        monitor="val_loss",
+                                        log_weights=True,
+                                        log_gradients=True,
+            )
+        ], verbose=args.verbose)
             model.save(f"{args.save_dir}/models/w_{w}.ckpt")
 
             del model
@@ -1192,6 +1210,7 @@ def train_the_model(args) -> None:
             # tf.saved_model.save(model, f"{args.save_dir}/models/w_{w}.keras")
             chunks_done[w] = True
             save_chunk_status(args.save_dir, chunks_done)
+            wandb.finish()
     pass
 
 
@@ -1402,6 +1421,9 @@ def main():
     # misc
     parser.add_argument('--verbose', type=int, required=False,
                         help='Training verbosity', default=2)
+    parser.add_argument('--wandb-run-name', type=str, required=False,
+                        help='Wandb run name (default: "STICI v1.1")',
+                        default="Default Experiment Name")
 
     args = parser.parse_args()
     args.restart_training = str_to_bool(args.restart_training)
