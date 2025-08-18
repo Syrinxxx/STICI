@@ -1196,9 +1196,12 @@ def train_the_model(args) -> None:
                                     WandbCallback(
                                         monitor="val_loss",
                                         log_weights=True,
-                                        log_gradients=True,
-            )
-        ], verbose=args.verbose)
+                                        log_gradients=False,
+                                        save_model=True,
+                                        save_freq='epoch',
+                                    )
+                                ], 
+                                verbose=args.verbose)
             model.save(f"{args.save_dir}/models/w_{w}.ckpt")
 
             del model
