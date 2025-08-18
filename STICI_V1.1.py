@@ -1102,14 +1102,14 @@ def get_func_from_saved_model(saved_model_dir):
 
 
 def train_the_model(args) -> None:
-    # Initialise wandb
-    wandb.init(
-        project="STICI",
-        name = args.wandb_run_name,
-        # name=f"chunk{args.which_chunk}_embed{args.embed_dim}_heads{args.na_heads}",  # Experiment name
-        config=args.__dict__,  # record all the arguments
-        tags=["imputation", "transformer"],  # tags
-    )
+    # # Initialise wandb
+    # wandb.init(
+    #     project="STICI",
+    #     name = args.wandb_run_name,
+    #     # name=f"chunk{args.which_chunk}_embed{args.embed_dim}_heads{args.na_heads}",  # Experiment name
+    #     config=args.__dict__,  # record all the arguments
+    #     tags=["imputation", "transformer"],  # tags
+    # )
     if args.restart_training:
         clear_dir(args.save_dir)
     assert args.max_mr > 0
@@ -1189,6 +1189,7 @@ def train_the_model(args) -> None:
         with strategy.scope():
             pprint(f"Creating model with args: {model_args}")
             model = create_model(model_args)
+            pprint(f"Model created")
             history = model.fit(train_dataset, steps_per_epoch=steps_per_epoch,
                                 epochs=NUM_EPOCHS,
                                 validation_data=valid_dataset,
@@ -1215,7 +1216,7 @@ def train_the_model(args) -> None:
             # tf.saved_model.save(model, f"{args.save_dir}/models/w_{w}.keras")
             chunks_done[w] = True
             save_chunk_status(args.save_dir, chunks_done)
-            wandb.finish()
+            # wandb.finish()
     pass
 
 
