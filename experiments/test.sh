@@ -1,10 +1,11 @@
 python3 STICI_V1.1.py \
     --mode train \
+    --restart-training 1 \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 10 \
-    --batch-size-per-gpu 2 \
+    --batch-size-per-gpu 3 \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
