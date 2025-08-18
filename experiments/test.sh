@@ -5,10 +5,7 @@ python3 STICI_V1.1.py \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 1 \
-    --batch-size-per-gpu 2 \
-
-
-
+    --batch-size-per-gpu 3 \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
@@ -27,4 +24,3 @@ python3 STICI_V1.1.py \
 #     --lr 0.002 \ 
 #     --restart-training 1 \
 #     --verbose 1 \
-    # --wandb-run-name "bs3_epoch1 test" \
