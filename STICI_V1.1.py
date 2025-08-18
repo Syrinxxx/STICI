@@ -53,8 +53,6 @@ from tensorflow.python.saved_model import tag_constants
 from tqdm import tqdm
 from typing import Union
 
-import wandb
-from wandb.integration.keras import WandbCallback
 
 class bcolors:
     HEADER = '\033[95m'
@@ -599,7 +597,6 @@ class DataReader:
         path_sep = "/" if "/" in file_path else os.path.sep
         line_counter = 0
         root, ext = os.path.splitext(file_path)
-
         with gzip.open(file_path, 'rt') if ext == '.gz' else open(file_path, 'rt') as f_in:
             # skip info
             while True:
@@ -613,15 +610,14 @@ class DataReader:
                 else:
                     data_header = line
                     break
-            if data_header is None:
-                raise IOError("The file only contains comments!")
-
-            df = dt.fread(file=file_path,
-                      sep=separator, header=True, skip_to_line=line_counter + 1, fill=True)
-            df = df.to_pandas()  # .astype('category')
-            if first_column_is_index:
-                df.set_index(df.columns[0], inplace=True)
-            return df
+        if data_header is None:
+            raise IOError("The file only contains comments!")
+        df = dt.fread(file=file_path,
+                      sep=separator, header=True, skip_to_line=line_counter + 1)
+        df = df.to_pandas()  # .astype('category')
+        if first_column_is_index:
+            df.set_index(df.columns[0], inplace=True)
+        return df
 
     def __find_file_extension(self, file_path, file_format, delimiter):
         # Default assumption
@@ -723,8 +719,7 @@ class DataReader:
             self.reference_panel.iloc[:, self.ref_sample_value_index - 1:].replace(phased_to_unphased_dict,
                                                                                    inplace=True)
 
-        self.genotype_vals = np.unique([g for g in genotype_vals if g is not None])
-        # self.genotype_vals = np.unique(genotype_vals)
+        self.genotype_vals = np.unique(genotype_vals)
         self.alleles = get_diploid_allels(self.genotype_vals) if not self.ref_is_hap else self.genotype_vals
         self.allele_count = len(self.alleles)
         self.MISSING_VALUE = self.allele_count if self.is_phased else len(self.genotype_vals)
@@ -1102,14 +1097,6 @@ def get_func_from_saved_model(saved_model_dir):
 
 
 def train_the_model(args) -> None:
-    # # Initialise wandb
-    # wandb.init(
-    #     project="STICI",
-    #     name = args.wandb_run_name,
-    #     # name=f"chunk{args.which_chunk}_embed{args.embed_dim}_heads{args.na_heads}",  # Experiment name
-    #     config=args.__dict__,  # record all the arguments
-    #     tags=["imputation", "transformer"],  # tags
-    # )
     if args.restart_training:
         clear_dir(args.save_dir)
     assert args.max_mr > 0
@@ -1172,7 +1159,6 @@ def train_the_model(args) -> None:
 
         steps_per_epoch = train_sample_count // BATCH_SIZE
         validation_steps = len(x_valid_indices) // BATCH_SIZE
-        pprint(f"Steps per epoch: {steps_per_epoch}, Validation steps: {validation_steps}")
         
         K.clear_session()
         callbacks = create_callbacks(save_path=f"{args.save_dir}/models/w_{w}/cp.ckpt")
@@ -1187,30 +1173,12 @@ def train_the_model(args) -> None:
             "use_r2": args.use_r2,
         }
         with strategy.scope():
-            pprint(f"Creating model with args: {model_args}")
             model = create_model(model_args)
-            pprint(f"Model created")
             history = model.fit(train_dataset, steps_per_epoch=steps_per_epoch,
                                 epochs=NUM_EPOCHS,
                                 validation_data=valid_dataset,
                                 validation_steps=validation_steps,
-                                callbacks=callbacks,
-                                verbose=args.verbose)
-            # history = model.fit(train_dataset, steps_per_epoch=steps_per_epoch,
-            #                     epochs=NUM_EPOCHS,
-            #                     validation_data=valid_dataset,
-            #                     validation_steps=validation_steps,
-            #                     callbacks=[
-            #                         *callbacks,
-            #                         WandbCallback(
-            #                             monitor="val_loss",
-            #                             log_weights=True,
-            #                             log_gradients=False,
-            #                             save_model=True,
-            #                             save_freq='epoch',
-            #                         )
-            #                     ], 
-            #                     verbose=args.verbose)
+                                callbacks=callbacks, verbose=args.verbose)
             model.save(f"{args.save_dir}/models/w_{w}.ckpt")
 
             del model
@@ -1221,7 +1189,6 @@ def train_the_model(args) -> None:
             # tf.saved_model.save(model, f"{args.save_dir}/models/w_{w}.keras")
             chunks_done[w] = True
             save_chunk_status(args.save_dir, chunks_done)
-            # wandb.finish()
     pass
 
 
@@ -1432,9 +1399,6 @@ def main():
     # misc
     parser.add_argument('--verbose', type=int, required=False,
                         help='Training verbosity', default=2)
-    parser.add_argument('--wandb-run-name', type=str, required=False,
-                        help='Wandb run name (default: "STICI v1.1")',
-                        default="Default Experiment Name")
 
     args = parser.parse_args()
     args.restart_training = str_to_bool(args.restart_training)
