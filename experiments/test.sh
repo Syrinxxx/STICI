@@ -1,7 +1,6 @@
 python3 STICI_V1.1.py \
-    --mode train \
-    --restart-training 1 \
-    --ref ./data/hapgen/22merged_30720.vcf.gz \
+    --mode impute \
+    --ref ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 2 \
