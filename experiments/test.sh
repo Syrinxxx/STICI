@@ -1,17 +1,18 @@
 python3 STICI_V1.1.py \
     --mode impute \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
-    --target ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 2 \
     --batch-size-per-gpu 3 \
+    --use-wandb true \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
 #     --which-chunk 1 \
 #     --save-dir ./alaki \
 #     --ref ./data/STI_benchmark_datasets/ALL.chr22.training.samples.100k.any.type.0.01.maf.variants.vcf.gz \
+#     --target ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
 #     --min-mr 0.85 \
 #     --max-mr 0.95 \
 #     --cs 2048 \

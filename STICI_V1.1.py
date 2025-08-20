@@ -53,6 +53,9 @@ from tensorflow.python.saved_model import tag_constants
 from tqdm import tqdm
 from typing import Union
 
+import wandb
+# from wandb.integration.keras import WandbCallback
+
 
 class bcolors:
     HEADER = '\033[95m'
@@ -69,6 +72,27 @@ class bcolors:
 def pprint(text):
     print(f"{bcolors.OKGREEN}{text}{bcolors.ENDC}")
 
+def init_wandb(args, chunk_idx=None):
+    if args.use_wandb:
+        # run_name = f"{args.wandb_runname}_chunk{chunk_idx}" if chunk_idx is not None else args.wandb_runname
+        wandb.init(
+            project="STICI",
+            name=args.wandb_runname,
+            config={
+                "learning_rate": args.lr,
+                "epochs": args.epochs,
+                "batch_size": args.batch_size_per_gpu,
+                "embed_dim": args.embed_dim,
+                "num_heads": args.na_heads,
+                "chunk_size": args.cs,
+                "chunk_overlap": args.co,
+                "min_mr": args.min_mr,
+                "max_mr": args.max_mr,
+                "sites_per_model": args.sites_per_model,
+                "use_r2": args.use_r2,
+                "use_wandb": args.use_wandb
+            }
+        )
 
 # logging.basicConfig(level=logging.WARNING)
 pprint("Tensorflow version " + tf.__version__)
@@ -508,7 +532,7 @@ def create_model(args):
     return model
 
 
-def create_callbacks(metric="loss", save_path="."):
+def create_callbacks(metric="loss", save_path=".", use_wandb=False):
     reducelr = tf.keras.callbacks.ReduceLROnPlateau(
         monitor=metric,
         mode='auto',
@@ -541,6 +565,9 @@ def create_callbacks(metric="loss", save_path="."):
         earlystop,
         # checkpoint
     ]
+
+    if use_wandb:  
+        callbacks.append(wandb.keras.WandbCallback())
 
     return callbacks
 
@@ -1103,11 +1130,15 @@ def train_the_model(args) -> None:
     assert args.min_mr > 0
     assert args.max_mr >= args.min_mr
     NUM_EPOCHS = args.epochs
+
+    if args.use_wandb:
+        init_wandb(args)
+
     strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.ReductionToOneDevice())
     N_REPLICAS = strategy.num_replicas_in_sync
     pprint(f"Num gpus to be used: {N_REPLICAS}")
     BATCH_SIZE = args.batch_size_per_gpu * N_REPLICAS
-
+    
     create_directories(args.save_dir)
     with open(f"{args.save_dir}/commandline_args.json", 'w') as f:
         json.dump(args.__dict__, f, indent=4)
@@ -1136,6 +1167,8 @@ def train_the_model(args) -> None:
             continue
 
         pprint(f"Training on chunk {w + 1}/{len(break_points) - 1}")
+        if args.use_wandb:
+            wandb.log({"current_chunk": w + 1, "total_chunks": len(break_points) - 1})
         final_start_pos = max(0, break_points[w] - 2 * args.co)
         final_end_pos = min(dr.VARIANT_COUNT, break_points[w + 1] + 2 * args.co)
         offset_before = break_points[w] - final_start_pos
@@ -1161,7 +1194,7 @@ def train_the_model(args) -> None:
         validation_steps = len(x_valid_indices) // BATCH_SIZE
         
         K.clear_session()
-        callbacks = create_callbacks(save_path=f"{args.save_dir}/models/w_{w}/cp.ckpt")
+        callbacks = create_callbacks(save_path=f"{args.save_dir}/models/w_{w}/cp.ckpt",use_wandb=args.use_wandb,)
         model_args = {
             "embedding_dim": args.embed_dim,
             "num_heads": args.na_heads,
@@ -1189,6 +1222,9 @@ def train_the_model(args) -> None:
             # tf.saved_model.save(model, f"{args.save_dir}/models/w_{w}.keras")
             chunks_done[w] = True
             save_chunk_status(args.save_dir, chunks_done)
+        
+        if args.use_wandb:
+            wandb.finish()
     pass
 
 
@@ -1306,6 +1342,12 @@ def main():
                                       help='Whether to clean previously saved models in target directory and restart the training',
                                       choices=['false', 'true', '0', '1'], default='0')
     deciding_args, _ = deciding_args_parser.parse_known_args()
+    deciding_args_parser.add_argument('--use-wandb', type=str, required=False,
+                        help='Whether to use Weights and Biases for logging (default=True).',
+                        choices=['false', 'true', '0', '1'],default='1')
+    deciding_args_parser.add_argument('--wandb-runname', type=str, required=False,
+                        help='The name of the Weights and Biases run (default="STICI_v1.1").',
+                        default='STICI_v1.1')
     parser = argparse.ArgumentParser(
         description="", parents=[deciding_args_parser])
     ## Input args
@@ -1409,6 +1451,7 @@ def main():
     args.target_vac = str_to_bool(args.target_vac)
     args.ref_fcai = str_to_bool(args.ref_fcai)
     args.target_fcai = str_to_bool(args.target_fcai)
+    args.use_wandb = str_to_bool(args.use_wandb)
 
     if not (args.save_dir.startswith("./") or args.save_dir.startswith("/")):
         args.save_dir = f"./{args.save_dir}"
