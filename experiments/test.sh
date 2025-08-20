@@ -6,7 +6,7 @@ python3 STICI_V1.1.py \
     --epochs 2 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-run-name "test_wandb" \
+    --wandb-runname "test_wandb" \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
