@@ -613,7 +613,7 @@ class DataReader:
         if data_header is None:
             raise IOError("The file only contains comments!")
         df = dt.fread(file=file_path,
-                      sep=separator, header=True, skip_to_line=line_counter + 1)
+                      sep=separator, header=True, skip_to_line=line_counter + 1, fill=True)
         df = df.to_pandas()  # .astype('category')
         if first_column_is_index:
             df.set_index(df.columns[0], inplace=True)
