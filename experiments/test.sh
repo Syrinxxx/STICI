@@ -2,6 +2,7 @@ python3 STICI_V1.1.py \
     --mode train \
     --restart-training 1 \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
+    --use-r2-loss false \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 10 \

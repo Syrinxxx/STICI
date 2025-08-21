@@ -530,11 +530,11 @@ class ImputationLoss(tf.keras.losses.Loss):
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
                 r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
             
-            wandb.log({"r2_loss": r2_loss})
-            self.r2_loss_val = r2_loss
+            # wandb.log({"r2_loss": r2_loss})
+            # self.r2_loss_val = r2_loss
             total_loss += r2_loss
         
-        wandb.log({"loss": total_loss})
+        # wandb.log({"loss": total_loss})
         return total_loss
 
 # Record each loss
