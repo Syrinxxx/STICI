@@ -531,7 +531,7 @@ def create_model(args):
     optimizer = tfa.optimizers.LAMB(learning_rate=args["lr"])
     # optimizer = tf.optimizers.AdamW(learning_rate=args["lr"], weight_decay=1e-5)
     model.compile(optimizer, loss=ImputationLoss(use_r2_loss=args["use_r2"]),
-                  metrics=metrics)
+                  metrics=tf.keras.metrics.CategoricalAccuracy())
     return model
 
 
