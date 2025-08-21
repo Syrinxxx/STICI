@@ -4,13 +4,14 @@ python3 STICI_V1.1.py \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
-    --epochs 2 \
+    --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "test_wandb" \
+    --wandb-runname "10epoch" \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
+    # --restart-training 1 \
 #     --which-chunk 1 \
 #     --save-dir ./alaki \
 #     --ref ./data/STI_benchmark_datasets/ALL.chr22.training.samples.100k.any.type.0.01.maf.variants.vcf.gz \

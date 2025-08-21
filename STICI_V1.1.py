@@ -511,8 +511,11 @@ class ImputationLoss(tf.keras.losses.Loss):
                 gt_alt_af = tf.cast(gt_alt_af, tf.float32)
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
                 r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
-
+            
+            # wandb.log({"r2_loss": r2_loss})
             total_loss += r2_loss
+        
+        # wandb.log({"loss": total_loss})
         return total_loss
 
 
@@ -528,7 +531,7 @@ def create_model(args):
     optimizer = tfa.optimizers.LAMB(learning_rate=args["lr"])
     # optimizer = tf.optimizers.AdamW(learning_rate=args["lr"], weight_decay=1e-5)
     model.compile(optimizer, loss=ImputationLoss(use_r2_loss=args["use_r2"]),
-                  metrics=tf.keras.metrics.CategoricalAccuracy())
+                  metrics=metrics)
     return model
 
 
@@ -1167,8 +1170,8 @@ def train_the_model(args) -> None:
             continue
 
         pprint(f"Training on chunk {w + 1}/{len(break_points) - 1}")
-        if args.use_wandb:
-            wandb.log({"current_chunk": w + 1, "total_chunks": len(break_points) - 1})
+        # if args.use_wandb:
+        #     wandb.log({"current_chunk": w + 1, "total_chunks": len(break_points) - 1})
         final_start_pos = max(0, break_points[w] - 2 * args.co)
         final_end_pos = min(dr.VARIANT_COUNT, break_points[w + 1] + 2 * args.co)
         offset_before = break_points[w] - final_start_pos
