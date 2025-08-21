@@ -458,6 +458,14 @@ custom_objects = {"STICI": STICI,
                   "TransformerBlock": TransformerBlock,
                   "CrossAttentionLayer": CrossAttentionLayer}
 
+def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
+        mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
+        gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
+        denom = gt_alt_af * (1.0 - gt_alt_af)
+        denom = tf.where(denom < 0.01, 0.01, denom)
+        r2 = tf.reduce_mean(tf.square(pred_alt_allele_probs - gt_alt_af), axis=0) / denom
+        r2 = tf.where(mask, tf.zeros_like(r2), r2)
+        return r2
 
 ## Loss
 import tensorflow as tf
@@ -484,15 +492,6 @@ class ImputationLoss(tf.keras.losses.Loss):
     def get_r2_loss(self):
         return self.r2_loss_val if self.use_r2_loss else 0.0
 
-    def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
-        mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
-        gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
-        denom = gt_alt_af * (1.0 - gt_alt_af)
-        denom = tf.where(denom < 0.01, 0.01, denom)
-        r2 = tf.reduce_mean(tf.square(pred_alt_allele_probs - gt_alt_af), axis=0) / denom
-        r2 = tf.where(mask, tf.zeros_like(r2), r2)
-        return r2
-
     def call(self, y_true, y_pred):
         y_true = tf.cast(y_true, y_pred.dtype)
 
@@ -518,7 +517,7 @@ class ImputationLoss(tf.keras.losses.Loss):
                 gt_alt_af = tf.cast(tf.math.count_nonzero(tf.argmax(y_true_grouped[i], axis=-1), axis=0), tf.int32) / group_size
                 gt_alt_af = tf.cast(gt_alt_af, tf.float32)
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_grouped[i][:, :, 1:], axis=-1)
-                r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(group_size, tf.float32)
+                r2_loss += -tf.reduce_sum(calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(group_size, tf.float32)
 
             if num_remainder_samples > 0:
                 remainder_start_index = num_full_groups * group_size
@@ -528,7 +527,7 @@ class ImputationLoss(tf.keras.losses.Loss):
                 gt_alt_af = tf.cast(tf.math.count_nonzero(tf.argmax(y_true_remainder, axis=-1), axis=0), tf.int32) / num_remainder_samples
                 gt_alt_af = tf.cast(gt_alt_af, tf.float32)
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
-                r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
+                r2_loss += -tf.reduce_sum(calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
             
             # wandb.log({"r2_loss": r2_loss})
             # self.r2_loss_val = r2_loss
@@ -580,6 +579,60 @@ class LossLogger(tf.keras.callbacks.Callback):
                 'r2_loss': self.loss_history['r2_loss'][-1] if self.loss_history['r2_loss'] else 0,
             })
 
+# 修改 R2Metric 类，使用外部函数
+class R2Metric(tf.keras.metrics.Metric):
+    def __init__(self, name='r2_metric', **kwargs):
+        super(R2Metric, self).__init__(name=name, **kwargs)
+        self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
+        self.count = self.add_weight(name='count', initializer='zeros')
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        # 处理分组逻辑
+        batch_size = tf.shape(y_true)[0]
+        group_size = 4
+        num_full_groups = batch_size // group_size
+        num_remainder_samples = batch_size % group_size
+
+        total_r2 = 0.0
+        
+        # 处理完整的分组
+        if num_full_groups > 0:
+            y_true_grouped = tf.reshape(y_true[:num_full_groups * group_size], 
+                                       (num_full_groups, group_size) + tuple(y_true.shape[1:]))
+            y_pred_grouped = tf.reshape(y_pred[:num_full_groups * group_size], 
+                                       (num_full_groups, group_size) + tuple(y_pred.shape[1:]))
+            
+            for i in range(num_full_groups):
+                gt_alt_af = tf.cast(tf.math.count_nonzero(tf.argmax(y_true_grouped[i], axis=-1), axis=0), tf.int32) / group_size
+                gt_alt_af = tf.cast(gt_alt_af, tf.float32)
+                pred_alt_allele_probs = tf.reduce_sum(y_pred_grouped[i][:, :, 1:], axis=-1)
+                # 调用外部函数
+                r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
+                total_r2 += tf.reduce_sum(r2_values)
+
+        # 处理剩余的样本
+        if num_remainder_samples > 0:
+            remainder_start_index = num_full_groups * group_size
+            y_true_remainder = y_true[remainder_start_index:]
+            y_pred_remainder = y_pred[remainder_start_index:]
+
+            gt_alt_af = tf.cast(tf.math.count_nonzero(tf.argmax(y_true_remainder, axis=-1), axis=0), tf.int32) / num_remainder_samples
+            gt_alt_af = tf.cast(gt_alt_af, tf.float32)
+            pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
+            # 调用外部函数
+            r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
+            total_r2 += tf.reduce_sum(r2_values)
+
+        # 更新状态变量
+        self.r2_sum.assign_add(total_r2)
+        self.count.assign_add(tf.cast(batch_size, tf.float32))
+
+    def result(self):
+        return self.r2_sum / self.count
+
+    def reset_state(self):
+        self.r2_sum.assign(0.0)
+        self.count.assign(0.0)
 ## Model creation
 def create_model(args):
     model = STICI(embed_dim=args["embedding_dim"],
@@ -591,8 +644,14 @@ def create_model(args):
                              offset_after=args["offset_after"])
     optimizer = tfa.optimizers.LAMB(learning_rate=args["lr"])
     # optimizer = tf.optimizers.AdamW(learning_rate=args["lr"], weight_decay=1e-5)
+    
+    metrics = [
+            tf.keras.metrics.CategoricalAccuracy(),
+            R2Metric()
+        ]
+
     model.compile(optimizer, loss=ImputationLoss(use_r2_loss=args["use_r2"]),
-                  metrics=tf.keras.metrics.CategoricalAccuracy())
+                  metrics=metrics)
     return model
 
 
