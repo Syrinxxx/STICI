@@ -469,6 +469,21 @@ class ImputationLoss(tf.keras.losses.Loss):
         self.kld_loss_obj = tf.keras.losses.KLDivergence(reduction=tf.keras.losses.Reduction.SUM)
         self.use_r2_loss = use_r2_loss
 
+        # Store loss values
+        self.ce_loss_val = None
+        self.kl_loss_val = None
+        if self.use_r2_loss:
+            self.r2_loss_val = None
+    
+    def get_ce_loss(self):
+        return self.ce_loss_val
+    
+    def get_kl_loss(self):
+        return self.kl_loss_val
+    
+    def get_r2_loss(self):
+        return self.r2_loss_val
+
     def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
         mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
         gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
@@ -483,6 +498,9 @@ class ImputationLoss(tf.keras.losses.Loss):
 
         cat_loss = self.ce_loss_obj(y_true, y_pred)
         kl_loss = self.kld_loss_obj(y_true, y_pred)
+        
+        self.ce_loss_val = cat_loss
+        self.kl_loss_val = kl_loss
 
         total_loss = cat_loss + kl_loss
 
@@ -513,11 +531,50 @@ class ImputationLoss(tf.keras.losses.Loss):
                 r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
             
             # wandb.log({"r2_loss": r2_loss})
+            self.r2_loss_val = r2_loss
             total_loss += r2_loss
         
         # wandb.log({"loss": total_loss})
         return total_loss
 
+# Record each loss
+class LossLogger(tf.keras.callbacks.Callback):
+    def __init__(self, use_wandb=False):
+        super(LossLogger, self).__init__()
+        self.use_wandb = use_wandb
+        self.loss_history = {
+            'total_loss': [],
+            'ce_loss': [],
+            'kl_loss': [],
+            'r2_loss': []
+        }
+        
+    def on_epoch_end(self, epoch, logs=None):
+        if hasattr(self.model.loss, 'get_ce_loss'):
+            ce_loss = self.model.loss.get_ce_loss()
+            if ce_loss is not None:
+                self.loss_history['ce_loss'].append(ce_loss.numpy())
+                logs['ce_loss'] = ce_loss.numpy() if logs is not None else None
+        
+        if hasattr(self.model.loss, 'get_kl_loss'):
+            kl_loss = self.model.loss.get_kl_loss()
+            if kl_loss is not None:
+                self.loss_history['kl_loss'].append(kl_loss.numpy())
+                logs['kl_loss'] = kl_loss.numpy() if logs is not None else None
+        
+        if hasattr(self.model.loss, 'get_r2_loss'):
+            r2_loss = self.model.loss.get_r2_loss()
+            if r2_loss is not None:
+                self.loss_history['r2_loss'].append(r2_loss.numpy())
+                logs['r2_loss'] = r2_loss.numpy() if logs is not None else None
+        
+        if self.use_wandb and wandb.run is not None:
+            wandb.log({
+                'total_loss': self.loss_history['total_loss'][-1] if self.loss_history['total_loss'] else 0,
+                'ce_loss': self.loss_history['ce_loss'][-1] if self.loss_history['ce_loss'] else 0,
+                'kl_loss': self.loss_history['kl_loss'][-1] if self.loss_history['kl_loss'] else 0,
+                'r2_loss': self.loss_history['r2_loss'][-1] if self.loss_history['r2_loss'] else 0,
+            })
 
 ## Model creation
 def create_model(args):
@@ -566,6 +623,7 @@ def create_callbacks(metric="loss", save_path=".", use_wandb=False):
     callbacks = [
         reducelr,
         earlystop,
+        LossLogger(use_wandb=use_wandb),
         # checkpoint
     ]
 
