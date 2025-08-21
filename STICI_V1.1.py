@@ -470,10 +470,10 @@ class ImputationLoss(tf.keras.losses.Loss):
         self.use_r2_loss = use_r2_loss
 
         # Store loss values
-        self.ce_loss_val = None
-        self.kl_loss_val = None
+        self.ce_loss_val = 0.0
+        self.kl_loss_val = 0.0
         if self.use_r2_loss:
-            self.r2_loss_val = None
+            self.r2_loss_val = 0.0
     
     def get_ce_loss(self):
         return self.ce_loss_val
@@ -482,7 +482,7 @@ class ImputationLoss(tf.keras.losses.Loss):
         return self.kl_loss_val
     
     def get_r2_loss(self):
-        return self.r2_loss_val
+        return self.r2_loss_val if self.use_r2_loss else 0.0
 
     def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
         mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
@@ -530,11 +530,11 @@ class ImputationLoss(tf.keras.losses.Loss):
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
                 r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
             
-            # wandb.log({"r2_loss": r2_loss})
+            wandb.log({"r2_loss": r2_loss})
             self.r2_loss_val = r2_loss
             total_loss += r2_loss
         
-        # wandb.log({"loss": total_loss})
+        wandb.log({"loss": total_loss})
         return total_loss
 
 # Record each loss
@@ -627,7 +627,7 @@ def create_callbacks(metric="loss", save_path=".", use_wandb=False):
     callbacks = [
         reducelr,
         earlystop,
-        LossLogger(use_wandb=use_wandb),
+        # LossLogger(use_wandb=use_wandb),
         # checkpoint
     ]
 
