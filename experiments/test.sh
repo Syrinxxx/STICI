@@ -8,7 +8,7 @@ python3 STICI_V1.1.py \
     --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "test_lossvalue" \
+    --wandb-runname "test_r2cal" \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
