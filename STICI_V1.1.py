@@ -550,22 +550,26 @@ class LossLogger(tf.keras.callbacks.Callback):
         }
         
     def on_epoch_end(self, epoch, logs=None):
+        
         if hasattr(self.model.loss, 'get_ce_loss'):
             ce_loss = self.model.loss.get_ce_loss()
             if ce_loss is not None:
-                self.loss_history['ce_loss'].append(ce_loss.numpy())
+                ce_loss_value = K.get_value(ce_loss)
+                self.loss_history['ce_loss'].append(ce_loss_value)
                 logs['ce_loss'] = ce_loss.numpy() if logs is not None else None
         
         if hasattr(self.model.loss, 'get_kl_loss'):
             kl_loss = self.model.loss.get_kl_loss()
             if kl_loss is not None:
-                self.loss_history['kl_loss'].append(kl_loss.numpy())
+                kl_loss_value = K.get_value(kl_loss)
+                self.loss_history['kl_loss'].append(kl_loss_value)
                 logs['kl_loss'] = kl_loss.numpy() if logs is not None else None
         
         if hasattr(self.model.loss, 'get_r2_loss'):
             r2_loss = self.model.loss.get_r2_loss()
             if r2_loss is not None:
-                self.loss_history['r2_loss'].append(r2_loss.numpy())
+                r2_loss_value = K.get_value(r2_loss)
+                self.loss_history['r2_loss'].append(r2_loss_value)
                 logs['r2_loss'] = r2_loss.numpy() if logs is not None else None
         
         if self.use_wandb and wandb.run is not None:
