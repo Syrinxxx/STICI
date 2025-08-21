@@ -7,7 +7,7 @@ python3 STICI_V1.1.py \
     --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "10epoch" \
+    --wandb-runname "test_wandb_each loss" \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
