@@ -579,62 +579,99 @@ class LossLogger(tf.keras.callbacks.Callback):
                 'r2_loss': self.loss_history['r2_loss'][-1] if self.loss_history['r2_loss'] else 0,
             })
 
-class R2Metric(tf.keras.metrics.Metric):
-    def __init__(self, name='r2_metric', **kwargs):
-        super(R2Metric, self).__init__(name=name, **kwargs)
+# class R2Metric(tf.keras.metrics.Metric):
+#     def __init__(self, name='r2_metric', **kwargs):
+#         super(R2Metric, self).__init__(name=name, **kwargs)
+#         self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
+#         self.sample_count = self.add_weight(name='sample_count', initializer='zeros')
+
+#     def update_state(self, y_true, y_pred, sample_weight=None):
+#         # 处理分组逻辑
+#         batch_size = tf.shape(y_true)[0]
+#         group_size = 4
+#         num_full_groups = batch_size // group_size
+#         num_remainder_samples = batch_size % group_size
+
+#         total_r2 = 0.0
+#         total_valid_variants = 0
+        
+#         # 处理完整的分组
+#         if num_full_groups > 0:
+#             y_true_grouped = tf.reshape(y_true[:num_full_groups * group_size], 
+#                                        (num_full_groups, group_size, -1, y_true.shape[-1]))
+#             y_pred_grouped = tf.reshape(y_pred[:num_full_groups * group_size], 
+#                                        (num_full_groups, group_size, -1, y_pred.shape[-1]))
+            
+#             for i in range(num_full_groups):
+#                 # 计算每个变异的等位基因频率
+#                 gt_alt_af = tf.reduce_mean(tf.argmax(y_true_grouped[i], axis=-1, output_type=tf.float32), axis=0)
+#                 pred_alt_allele_probs = tf.reduce_sum(y_pred_grouped[i][:, :, 1:], axis=-1)
+                
+#                 # 调用外部函数
+#                 r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
+#                 total_r2 += tf.reduce_sum(r2_values)
+#                 total_valid_variants += tf.reduce_sum(tf.cast(tf.not_equal(r2_values, 0.0), tf.float32))
+
+#         # 处理剩余的样本
+#         if num_remainder_samples > 0:
+#             remainder_start_index = num_full_groups * group_size
+#             y_true_remainder = y_true[remainder_start_index:]
+#             y_pred_remainder = y_pred[remainder_start_index:]
+
+#             # 计算每个变异的等位基因频率
+#             gt_alt_af = tf.reduce_mean(tf.argmax(y_true_remainder, axis=-1, output_type=tf.float32), axis=0)
+#             pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
+            
+#             # 调用外部函数
+#             r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
+#             total_r2 += tf.reduce_sum(r2_values)
+#             total_valid_variants += tf.reduce_sum(tf.cast(tf.not_equal(r2_values, 0.0), tf.float32))
+
+#         # 更新状态变量
+#         self.r2_sum.assign_add(total_r2)
+#         self.sample_count.assign_add(tf.cast(total_valid_variants, tf.float32))
+
+#     def result(self):
+#         return tf.math.divide_no_nan(self.r2_sum, self.sample_count)
+
+#     def reset_state(self):
+#         self.r2_sum.assign(0.0)
+#         self.sample_count.assign(0.0)
+
+class MinimacR2Metric(tf.keras.metrics.Metric):
+    """
+    A custom Keras metric to calculate the average Minimac R2 score
+    across all batches.
+    """
+    def __init__(self, name='minimac_r2', **kwargs):
+        super(MinimacR2Metric, self).__init__(name=name, **kwargs)
         self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
         self.sample_count = self.add_weight(name='sample_count', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        # 处理分组逻辑
-        batch_size = tf.shape(y_true)[0]
-        group_size = 4
-        num_full_groups = batch_size // group_size
-        num_remainder_samples = batch_size % group_size
+        # Flatten the tensors to handle multi-dimensional outputs if needed
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
 
-        total_r2 = 0.0
-        total_valid_variants = 0
+        # Assuming -1 is the missing value
+        mask = tf.cast(tf.math.not_equal(y_true, -1.0), tf.float32)
+
+        # Calculate R2 for the current batch
+        batch_r2 = calculate_Minimac_R2(y_true, y_pred, mask)
         
-        # 处理完整的分组
-        if num_full_groups > 0:
-            y_true_grouped = tf.reshape(y_true[:num_full_groups * group_size], 
-                                       (num_full_groups, group_size, -1, y_true.shape[-1]))
-            y_pred_grouped = tf.reshape(y_pred[:num_full_groups * group_size], 
-                                       (num_full_groups, group_size, -1, y_pred.shape[-1]))
-            
-            for i in range(num_full_groups):
-                # 计算每个变异的等位基因频率
-                gt_alt_af = tf.reduce_mean(tf.argmax(y_true_grouped[i], axis=-1, output_type=tf.float32), axis=0)
-                pred_alt_allele_probs = tf.reduce_sum(y_pred_grouped[i][:, :, 1:], axis=-1)
-                
-                # 调用外部函数
-                r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
-                total_r2 += tf.reduce_sum(r2_values)
-                total_valid_variants += tf.reduce_sum(tf.cast(tf.not_equal(r2_values, 0.0), tf.float32))
-
-        # 处理剩余的样本
-        if num_remainder_samples > 0:
-            remainder_start_index = num_full_groups * group_size
-            y_true_remainder = y_true[remainder_start_index:]
-            y_pred_remainder = y_pred[remainder_start_index:]
-
-            # 计算每个变异的等位基因频率
-            gt_alt_af = tf.reduce_mean(tf.argmax(y_true_remainder, axis=-1, output_type=tf.float32), axis=0)
-            pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
-            
-            # 调用外部函数
-            r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
-            total_r2 += tf.reduce_sum(r2_values)
-            total_valid_variants += tf.reduce_sum(tf.cast(tf.not_equal(r2_values, 0.0), tf.float32))
-
-        # 更新状态变量
-        self.r2_sum.assign_add(total_r2)
-        self.sample_count.assign_add(tf.cast(total_valid_variants, tf.float32))
+        # Count the number of samples in the current batch
+        batch_size = tf.cast(tf.shape(y_true)[0], tf.float32)
+        
+        # Update the state variables
+        self.r2_sum.assign_add(batch_r2 * batch_size)
+        self.sample_count.assign_add(batch_size)
 
     def result(self):
+        # Return the overall average R2 score
         return tf.math.divide_no_nan(self.r2_sum, self.sample_count)
 
     def reset_state(self):
+        # Reset the state variables at the beginning of each epoch
         self.r2_sum.assign(0.0)
         self.sample_count.assign(0.0)
 
@@ -656,7 +693,7 @@ def create_model(args):
     #     ]
     metrics = [
         tf.keras.metrics.CategoricalAccuracy(name='accuracy'),
-        R2Metric(name='r2_score')
+        MinimacR2Metric(name='r2_score')
     ]
     
 
