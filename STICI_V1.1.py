@@ -658,6 +658,7 @@ class MinimacR2Metric(tf.keras.metrics.Metric):
 
         # Calculate R2 for the current batch
         batch_r2 = calculate_Minimac_R2(y_true, y_pred, mask)
+        batch_r2 = tf.reduce_mean(batch_r2)
         
         # Count the number of samples in the current batch
         batch_size = tf.cast(tf.shape(y_true)[0], tf.float32)
