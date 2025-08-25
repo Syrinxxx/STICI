@@ -501,7 +501,8 @@ class ImputationLoss(tf.keras.losses.Loss):
         self.ce_loss_val = cat_loss
         self.kl_loss_val = kl_loss
 
-        total_loss = cat_loss + kl_loss
+        # total_loss = cat_loss + kl_loss
+        total_loss = 0
 
         if self.use_r2_loss:
             batch_size = tf.shape(y_true)[0]
