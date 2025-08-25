@@ -501,8 +501,8 @@ class ImputationLoss(tf.keras.losses.Loss):
         self.ce_loss_val = cat_loss
         self.kl_loss_val = kl_loss
 
-        # total_loss = cat_loss + kl_loss
-        total_loss = 0
+        total_loss = cat_loss + kl_loss
+        # total_loss = 0
 
         if self.use_r2_loss:
             batch_size = tf.shape(y_true)[0]
@@ -639,43 +639,96 @@ class LossLogger(tf.keras.callbacks.Callback):
 #         self.r2_sum.assign(0.0)
 #         self.sample_count.assign(0.0)
 
+# class MinimacR2Metric(tf.keras.metrics.Metric):
+#     """
+#     A custom Keras metric to calculate the average Minimac R2 score
+#     across all batches.
+#     """
+#     def __init__(self, name='minimac_r2', **kwargs):
+#         super(MinimacR2Metric, self).__init__(name=name, **kwargs)
+#         self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
+#         self.sample_count = self.add_weight(name='sample_count', initializer='zeros')
+
+#     def update_state(self, y_true, y_pred, sample_weight=None):
+#         # Flatten the tensors to handle multi-dimensional outputs if needed
+#         y_true = tf.cast(y_true, tf.float32)
+#         y_pred = tf.cast(y_pred, tf.float32)
+
+#         # Assuming -1 is the missing value
+#         mask = tf.cast(tf.math.not_equal(y_true, -1.0), tf.float32)
+
+#         # Calculate R2 for the current batch
+#         batch_r2 = calculate_Minimac_R2(y_true, y_pred, mask)
+#         batch_r2 = tf.reduce_mean(batch_r2)
+        
+#         # Count the number of samples in the current batch
+#         batch_size = tf.cast(tf.shape(y_true)[0], tf.float32)
+        
+#         # Update the state variables
+#         self.r2_sum.assign_add(batch_r2 * batch_size)
+#         self.sample_count.assign_add(batch_size)
+
+#     def result(self):
+#         # Return the overall average R2 score
+#         return tf.math.divide_no_nan(self.r2_sum, self.sample_count)
+
+#     def reset_state(self):
+#         # Reset the state variables at the beginning of each epoch
+#         self.r2_sum.assign(0.0)
+#         self.sample_count.assign(0.0)
+
+
+
 class MinimacR2Metric(tf.keras.metrics.Metric):
     """
-    A custom Keras metric to calculate the average Minimac R2 score
-    across all batches.
+    A custom Keras metric to calculate the Minimac-style R² across batches.
+    This computes the squared correlation between predicted allele dosages
+    and true genotypes, then averages over variants.
     """
+
     def __init__(self, name='minimac_r2', **kwargs):
         super(MinimacR2Metric, self).__init__(name=name, **kwargs)
         self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
-        self.sample_count = self.add_weight(name='sample_count', initializer='zeros')
+        self.variant_count = self.add_weight(name='variant_count', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        # Flatten the tensors to handle multi-dimensional outputs if needed
+        """
+        y_true: shape (batch_size, num_variants, num_classes)
+        y_pred: shape (batch_size, num_variants, num_classes)
+        Assumes last dimension = genotype categories (e.g., 3 for diploid: [0,1,2]).
+        """
+
+        # 转换为 float32
         y_true = tf.cast(y_true, tf.float32)
         y_pred = tf.cast(y_pred, tf.float32)
 
-        # Assuming -1 is the missing value
-        mask = tf.cast(tf.math.not_equal(y_true, -1.0), tf.float32)
+        # one-hot → genotype dosage (取 argmax 就是GT，或者加权求期望值是dosage)
+        true_dosage = tf.cast(tf.argmax(y_true, axis=-1), tf.float32)  # (batch, variants)
+        pred_dosage = tf.reduce_sum(y_pred * tf.range(tf.shape(y_pred)[-1], dtype=tf.float32), axis=-1)
 
-        # Calculate R2 for the current batch
-        batch_r2 = calculate_Minimac_R2(y_true, y_pred, mask)
-        batch_r2 = tf.reduce_mean(batch_r2)
-        
-        # Count the number of samples in the current batch
-        batch_size = tf.cast(tf.shape(y_true)[0], tf.float32)
-        
-        # Update the state variables
-        self.r2_sum.assign_add(batch_r2 * batch_size)
-        self.sample_count.assign_add(batch_size)
+        # 按 variant 计算均值
+        true_mean = tf.reduce_mean(true_dosage, axis=0)  # (variants,)
+        pred_mean = tf.reduce_mean(pred_dosage, axis=0)  # (variants,)
+
+        # 协方差 & 方差
+        cov = tf.reduce_mean((true_dosage - true_mean) * (pred_dosage - pred_mean), axis=0)
+        var_true = tf.reduce_mean(tf.square(true_dosage - true_mean), axis=0)
+        var_pred = tf.reduce_mean(tf.square(pred_dosage - pred_mean), axis=0)
+
+        # per-variant R²
+        r2_per_variant = tf.math.divide_no_nan(tf.square(cov), var_true * var_pred)
+
+        # 累加
+        self.r2_sum.assign_add(tf.reduce_sum(r2_per_variant))
+        self.variant_count.assign_add(tf.cast(tf.shape(r2_per_variant)[0], tf.float32))
 
     def result(self):
-        # Return the overall average R2 score
-        return tf.math.divide_no_nan(self.r2_sum, self.sample_count)
+        return tf.math.divide_no_nan(self.r2_sum, self.variant_count)
 
     def reset_state(self):
-        # Reset the state variables at the beginning of each epoch
         self.r2_sum.assign(0.0)
-        self.sample_count.assign(0.0)
+        self.variant_count.assign(0.0)
+
 
 ## Model creation
 def create_model(args):
