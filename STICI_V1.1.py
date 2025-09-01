@@ -730,6 +730,48 @@ class MinimacR2Metric(tf.keras.metrics.Metric):
         self.variant_count.assign(0.0)
 
 
+class Minimac3R2Metric(tf.keras.metrics.Metric):
+    """
+    Minimac3-style R² metric:
+    Var(observed dosage) / (2 * p * (1 - p)),
+    where p is the sample allele frequency.
+    """
+    def __init__(self, name="minimac3_r2", **kwargs):
+        super(Minimac3R2Metric, self).__init__(name=name, **kwargs)
+        self.r2_sum = self.add_weight(name="r2_sum", initializer="zeros")
+        self.variant_count = self.add_weight(name="variant_count", initializer="zeros")
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        # Convert y_pred to dosage (shape: [batch, num_variants])
+        # assuming last dim is genotype probs: [p0, p1, p2]
+        y_pred = tf.cast(y_pred, tf.float32)
+        genotype_probs = tf.reshape(y_pred, [-1, y_pred.shape[-2], y_pred.shape[-1]])
+        dosage = tf.reduce_sum(genotype_probs * tf.constant([0.0, 1.0, 2.0], dtype=tf.float32), axis=-1)
+
+        # Compute allele frequency p per variant
+        p = tf.reduce_mean(dosage, axis=0) / 2.0  # shape [num_variants]
+
+        # Variance of dosage per variant
+        var_obs = tf.math.reduce_variance(dosage, axis=0)  # shape [num_variants]
+
+        # Expected variance under HWE
+        var_exp = 2.0 * p * (1.0 - p)  # shape [num_variants]
+
+        # Minimac3-style R²
+        r2 = tf.math.divide_no_nan(var_obs, var_exp)  # shape [num_variants]
+
+        # Update running sums
+        self.r2_sum.assign_add(tf.reduce_sum(r2))
+        self.variant_count.assign_add(tf.cast(tf.shape(r2)[0], tf.float32))
+
+    def result(self):
+        return tf.math.divide_no_nan(self.r2_sum, self.variant_count)
+
+    def reset_state(self):
+        self.r2_sum.assign(0.0)
+        self.variant_count.assign(0.0)
+
+
 ## Model creation
 def create_model(args):
     model = STICI(embed_dim=args["embedding_dim"],
@@ -749,6 +791,7 @@ def create_model(args):
     metrics = [
         tf.keras.metrics.CategoricalAccuracy(name='accuracy'),
         MinimacR2Metric(name='r2_score')
+        Minimac3R2Metric(name='r2_score_minimac3')
     ]
     
 
