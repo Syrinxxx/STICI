@@ -790,7 +790,7 @@ def create_model(args):
     #     ]
     metrics = [
         tf.keras.metrics.CategoricalAccuracy(name='accuracy'),
-        MinimacR2Metric(name='r2_score')
+        MinimacR2Metric(name='r2_score'),
         Minimac3R2Metric(name='r2_score_minimac3')
     ]
     
