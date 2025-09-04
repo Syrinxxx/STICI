@@ -458,14 +458,6 @@ custom_objects = {"STICI": STICI,
                   "TransformerBlock": TransformerBlock,
                   "CrossAttentionLayer": CrossAttentionLayer}
 
-def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
-        mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
-        gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
-        denom = gt_alt_af * (1.0 - gt_alt_af)
-        denom = tf.where(denom < 0.01, 0.01, denom)
-        r2 = tf.reduce_mean(tf.square(pred_alt_allele_probs - gt_alt_af), axis=0) / denom
-        r2 = tf.where(mask, tf.zeros_like(r2), r2)
-        return r2
 
 ## Loss
 import tensorflow as tf
@@ -491,6 +483,15 @@ class ImputationLoss(tf.keras.losses.Loss):
     
     def get_r2_loss(self):
         return self.r2_loss_val if self.use_r2_loss else 0.0
+    
+    def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
+        mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
+        gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
+        denom = gt_alt_af * (1.0 - gt_alt_af)
+        denom = tf.where(denom < 0.01, 0.01, denom)
+        r2 = tf.reduce_mean(tf.square(pred_alt_allele_probs - gt_alt_af), axis=0) / denom
+        r2 = tf.where(mask, tf.zeros_like(r2), r2)
+        return r2
 
     def call(self, y_true, y_pred):
         y_true = tf.cast(y_true, y_pred.dtype)
