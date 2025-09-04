@@ -519,7 +519,7 @@ class ImputationLoss(tf.keras.losses.Loss):
                 gt_alt_af = tf.cast(tf.math.count_nonzero(tf.argmax(y_true_grouped[i], axis=-1), axis=0), tf.int32) / group_size
                 gt_alt_af = tf.cast(gt_alt_af, tf.float32)
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_grouped[i][:, :, 1:], axis=-1)
-                r2_loss += -tf.reduce_sum(calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(group_size, tf.float32)
+                r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(group_size, tf.float32)
 
             if num_remainder_samples > 0:
                 remainder_start_index = num_full_groups * group_size
@@ -529,7 +529,7 @@ class ImputationLoss(tf.keras.losses.Loss):
                 gt_alt_af = tf.cast(tf.math.count_nonzero(tf.argmax(y_true_remainder, axis=-1), axis=0), tf.int32) / num_remainder_samples
                 gt_alt_af = tf.cast(gt_alt_af, tf.float32)
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
-                r2_loss += -tf.reduce_sum(calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
+                r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
             
             # wandb.log({"r2_loss": r2_loss})
             # self.r2_loss_val = r2_loss
