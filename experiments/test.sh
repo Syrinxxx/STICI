@@ -1,14 +1,14 @@
 python3 STICI_V1.1.py \
-    --mode train \
-    --restart-training 1 \
+    --mode impute \
+    --target ./data/hapgen/simu3_con_30720.vcf \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
     --use-r2 true \
-    --epochs 50 \
+    --epochs 2 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "base_50epoch" \
+    --wandb-runname "try_testmode_masking_metrics" \
 
 
 # python3 STICI_V1.1.py \

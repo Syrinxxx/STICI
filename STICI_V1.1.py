@@ -1515,41 +1515,120 @@ def train_the_model(args) -> None:
     pass
 
 
+# def impute_the_target(args):
+#     from tensorflow.keras import mixed_precision
+
+#     mixed_precision.set_global_policy('mixed_float16')
+    
+#     # if args.use_wandb:
+#     #     init_wandb(args)
+#     #     pprint("Weights & Biases logging enabled for imputation")
+
+#     strategy = tf.distribute.get_strategy()
+#     # strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.ReductionToOneDevice())
+
+#     if len(tf.config.list_physical_devices('GPU')) == 0:
+#         N_REPLICAS = psutil.cpu_count(logical=False) - 2
+#         pprint(f"Num cpu cores to be used: {N_REPLICAS}")
+#         # tf.config.threading.set_intra_op_parallelism_threads(num_threads=N_REPLICAS)  # Number of threads for each operation
+#         # tf.config.threading.set_inter_op_parallelism_threads(num_threads=4)  # Number of threads for multiple operations
+#         BATCH_SIZE = args.batch_size_per_gpu * 1
+
+#     else:
+#         N_REPLICAS = strategy.num_replicas_in_sync
+#         pprint(f"Num gpus to be used: {N_REPLICAS}")
+#         BATCH_SIZE = args.batch_size_per_gpu * N_REPLICAS
+
+#     if args.use_trt:
+#         from tensorflow.python.compiler.tensorrt import trt_convert as trt
+
+#     if args.target is None:
+#         raise argparse.ArgumentError(None,
+#                                      message="Target file missing for imputation. use --target to specify a target file.")
+
+#     if os.path.exists(f"{args.save_dir}/commandline_args.json"):
+#         with open(f"{args.save_dir}/commandline_args.json", 'r') as f:
+#             training_args = json.load(f)
+#         # Ensure that sites-per-model is matched to the one used for training
+#         args.sites_per_model = training_args["sites_per_model"]
+#         args.tihp = training_args["tihp"]
+#         args.cs = training_args["cs"]
+#         args.co = training_args["co"]
+
+#     dr = DataReader()
+#     dr.assign_training_set(file_path=args.ref,
+#                            target_is_gonna_be_phased_or_haps=args.tihp,
+#                            variants_as_columns=args.ref_vac,
+#                            delimiter=args.ref_sep,
+#                            file_format=args.ref_file_format,
+#                            first_column_is_index=args.ref_fcai,
+#                            comments=args.ref_comment)
+#     dr.assign_test_set(file_path=args.target,
+#                        variants_as_columns=args.target_vac,
+#                        delimiter=args.target_sep,
+#                        file_format=args.target_file_format,
+#                        first_column_is_index=args.target_fcai,
+#                        comments=args.target_comment)
+
+#     all_preds = []
+#     break_points = list(np.arange(0, dr.VARIANT_COUNT, args.sites_per_model)) + [dr.VARIANT_COUNT]
+#     for w in range(len(break_points) - 1):
+#         pprint(f"Imputing chunk {w + 1}/{len(break_points) - 1}")
+#         final_start_pos = max(0, break_points[w] - 2 * args.co)
+#         final_end_pos = min(dr.VARIANT_COUNT, break_points[w + 1] + 2 * args.co)
+#         test_dataset_np = dr.get_target_set(final_start_pos, final_end_pos).astype(np.int32)
+#         steps = int(np.ceil(len(test_dataset_np) / BATCH_SIZE))
+#         K.clear_session()
+#         test_dataset = get_test_dataset(test_dataset_np, BATCH_SIZE, depth=dr.SEQ_DEPTH, strategy=strategy)
+#         if args.use_trt:
+#             result_key = 'output_1'
+#             model, _ = get_func_from_saved_model(f"{args.save_dir}/models/trt/w_{w}")
+#             predict_onehot = []
+#             with strategy.scope():
+#                 for batch in tqdm(test_dataset):
+#                     predict_onehot.append(model(batch)[result_key])
+#             predict_onehot = np.vstack(predict_onehot)
+
+#         else:
+#             model = tf.keras.models.load_model(
+#                 f"{args.save_dir}/models/w_{w}.ckpt",
+#                 custom_objects=custom_objects,
+#                 compile=False
+#             )
+#             with strategy.scope():
+#                 predict_onehot = model.predict(test_dataset, verbose=args.verbose, steps=steps)
+
+#         all_preds.append(predict_onehot.astype(np.float32))
+#     all_preds = np.hstack(all_preds)
+#     destination_file_path = dr.write_ligated_results_to_file(dr.preds_to_genotypes(all_preds),
+#                                                              f"{args.save_dir}/out/ligated_results",
+#                                                              compress=args.compress_results)
+#     pprint(f"Done! Please find the file at {destination_file_path}")
+
 def impute_the_target(args):
     from tensorflow.keras import mixed_precision
-
     mixed_precision.set_global_policy('mixed_float16')
-    
-    # if args.use_wandb:
-    #     init_wandb(args)
-    #     pprint("Weights & Biases logging enabled for imputation")
+
+    # 初始化wandb（如果启用）
+    if args.use_wandb:
+        init_wandb(args, chunk_idx="imputation")
+        pprint("Weights & Biases logging enabled for imputation")
 
     strategy = tf.distribute.get_strategy()
-    # strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.ReductionToOneDevice())
-
+    
     if len(tf.config.list_physical_devices('GPU')) == 0:
         N_REPLICAS = psutil.cpu_count(logical=False) - 2
-        pprint(f"Num cpu cores to be used: {N_REPLICAS}")
-        # tf.config.threading.set_intra_op_parallelism_threads(num_threads=N_REPLICAS)  # Number of threads for each operation
-        # tf.config.threading.set_inter_op_parallelism_threads(num_threads=4)  # Number of threads for multiple operations
         BATCH_SIZE = args.batch_size_per_gpu * 1
-
     else:
         N_REPLICAS = strategy.num_replicas_in_sync
-        pprint(f"Num gpus to be used: {N_REPLICAS}")
         BATCH_SIZE = args.batch_size_per_gpu * N_REPLICAS
 
-    if args.use_trt:
-        from tensorflow.python.compiler.tensorrt import trt_convert as trt
-
     if args.target is None:
-        raise argparse.ArgumentError(None,
-                                     message="Target file missing for imputation. use --target to specify a target file.")
+        raise argparse.ArgumentError(None, "Target file missing for imputation.")
 
     if os.path.exists(f"{args.save_dir}/commandline_args.json"):
         with open(f"{args.save_dir}/commandline_args.json", 'r') as f:
             training_args = json.load(f)
-        # Ensure that sites-per-model is matched to the one used for training
         args.sites_per_model = training_args["sites_per_model"]
         args.tihp = training_args["tihp"]
         args.cs = training_args["cs"]
@@ -1571,40 +1650,139 @@ def impute_the_target(args):
                        comments=args.target_comment)
 
     all_preds = []
+    all_ground_truth = []
     break_points = list(np.arange(0, dr.VARIANT_COUNT, args.sites_per_model)) + [dr.VARIANT_COUNT]
+    
+    # 用于收集所有chunk的metrics
+    all_metrics = {
+        'accuracy': [],
+        'r2_score': [],
+        'r2_score_minimac3': []
+    }
+
     for w in range(len(break_points) - 1):
         pprint(f"Imputing chunk {w + 1}/{len(break_points) - 1}")
         final_start_pos = max(0, break_points[w] - 2 * args.co)
         final_end_pos = min(dr.VARIANT_COUNT, break_points[w + 1] + 2 * args.co)
+        
+        # 获取完整的ground truth
         test_dataset_np = dr.get_target_set(final_start_pos, final_end_pos).astype(np.int32)
+        
+        # 使用add_attention_mask创建masked数据集
+        test_dataset = get_test_dataset_with_masking(
+            test_dataset_np, BATCH_SIZE, dr.SEQ_DEPTH, strategy, 
+            args.min_mr, args.max_mr, test_dataset_np
+        )
+        
         steps = int(np.ceil(len(test_dataset_np) / BATCH_SIZE))
         K.clear_session()
-        test_dataset = get_test_dataset(test_dataset_np, BATCH_SIZE, depth=dr.SEQ_DEPTH, strategy=strategy)
-        if args.use_trt:
-            result_key = 'output_1'
-            model, _ = get_func_from_saved_model(f"{args.save_dir}/models/trt/w_{w}")
-            predict_onehot = []
-            with strategy.scope():
-                for batch in tqdm(test_dataset):
-                    predict_onehot.append(model(batch)[result_key])
-            predict_onehot = np.vstack(predict_onehot)
-
-        else:
-            model = tf.keras.models.load_model(
-                f"{args.save_dir}/models/w_{w}.ckpt",
-                custom_objects=custom_objects,
-                compile=False
+        
+        model = tf.keras.models.load_model(
+            f"{args.save_dir}/models/w_{w}.ckpt",
+            custom_objects=custom_objects,
+            compile=False
+        )
+        
+        # 编译模型用于评估
+        if args.calculate_metrics:
+            model.compile(
+                optimizer='adam',
+                loss=ImputationLoss(use_r2_loss=args.use_r2),
+                metrics=[
+                    tf.keras.metrics.CategoricalAccuracy(name='accuracy'),
+                    MinimacR2Metric(name='r2_score'),
+                    Minimac3R2Metric(name='r2_score_minimac3')
+                ]
             )
-            with strategy.scope():
-                predict_onehot = model.predict(test_dataset, verbose=args.verbose, steps=steps)
-
+        
+        with strategy.scope():
+            # 预测masked数据
+            predict_onehot = model.predict(test_dataset, verbose=args.verbose, steps=steps)
+            
+            # 计算metrics
+            if args.calculate_metrics:
+                # 准备ground truth的one-hot编码
+                ground_truth = test_dataset_np[:, :predict_onehot.shape[1]]
+                ground_truth_onehot = tf.one_hot(ground_truth, dr.SEQ_DEPTH - 1 if not dr.is_phased else dr.SEQ_DEPTH).numpy()
+                
+                # 计算metrics
+                metrics_results = model.evaluate(
+                    test_dataset, 
+                    ground_truth_onehot, 
+                    verbose=0,  # 减少输出噪音
+                    steps=steps,
+                    return_dict=True
+                )
+                
+                pprint(f"Chunk {w+1} Metrics: {metrics_results}")
+                
+                # 记录到wandb
+                if args.use_wandb and wandb.run is not None:
+                    wandb_metrics = {f"chunk_{w+1}_{k}": v for k, v in metrics_results.items()}
+                    wandb.log(wandb_metrics)
+                
+                for metric_name in all_metrics.keys():
+                    if metric_name in metrics_results:
+                        all_metrics[metric_name].append(metrics_results[metric_name])
+        
         all_preds.append(predict_onehot.astype(np.float32))
+        all_ground_truth.append(test_dataset_np)
+    
+    # 输出总体metrics
+    if args.calculate_metrics:
+        pprint("Overall Metrics across all chunks:")
+        overall_metrics = {}
+        for metric_name, values in all_metrics.items():
+            if values:
+                avg_value = np.mean(values)
+                overall_metrics[f"overall_{metric_name}"] = avg_value
+                pprint(f"{metric_name}: {avg_value:.4f}")
+        
+        # 记录总体metrics到wandb
+        if args.use_wandb and wandb.run is not None:
+            wandb.log(overall_metrics)
+            
+            # 还可以记录一些统计信息
+            # wandb.log({
+            #     "total_chunks": len(break_points) - 1,
+            #     "total_variants": dr.VARIANT_COUNT,
+            #     "masking_rate_min": args.min_mr,
+            #     "masking_rate_max": args.max_mr
+            # })
+    
+    # 生成最终预测结果
     all_preds = np.hstack(all_preds)
-    destination_file_path = dr.write_ligated_results_to_file(dr.preds_to_genotypes(all_preds),
-                                                             f"{args.save_dir}/out/ligated_results",
-                                                             compress=args.compress_results)
+    destination_file_path = dr.write_ligated_results_to_file(
+        dr.preds_to_genotypes(all_preds),
+        f"{args.save_dir}/out/ligated_results",
+        compress=args.compress_results
+    )
+    
+    # 记录完成信息到wandb
+    # if args.use_wandb and wandb.run is not None:
+    #     wandb.log({"imputation_completed": 1})
+    #     wandb.finish()
+    
     pprint(f"Done! Please find the file at {destination_file_path}")
 
+def get_test_dataset_with_masking(x, batch_size, depth, strategy, min_mr, max_mr, ground_truth):
+    """获取带有masking的测试数据集，使用add_attention_mask函数"""
+    AUTO = tf.data.AUTOTUNE
+    
+    # 创建包含输入和ground truth的数据集
+    dataset = tf.data.Dataset.from_tensor_slices((x, ground_truth))
+    
+    # 使用add_attention_mask进行masking
+    dataset = dataset.map(
+        lambda xx, yy: add_attention_mask(xx, yy, depth, min_mr, max_mr),
+        num_parallel_calls=AUTO,
+        deterministic=False
+    )
+    
+    dataset = dataset.prefetch(AUTO)
+    dataset = dataset.batch(batch_size, drop_remainder=False, num_parallel_calls=AUTO)
+    
+    return dataset
 
 def str_to_bool(s):
     # Define accepted string values for True and False
