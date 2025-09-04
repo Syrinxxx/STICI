@@ -4,8 +4,11 @@ python3 STICI_V1.1.py \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
-    --epochs 10 \
+    --use-r2 true \
+    --epochs 50 \
     --batch-size-per-gpu 3 \
+    --use-wandb true \
+    --wandb-runname "base_50epoch" \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
