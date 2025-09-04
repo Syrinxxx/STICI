@@ -2,6 +2,7 @@ python3 STICI_V1.1.py \
     --mode impute \
     --target ./data/hapgen/simu3_con_30720.vcf \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
+    --testmode true \
     --tihp 1 \
     --save-dir ./alaki \
     --use-r2 true \

@@ -1653,12 +1653,6 @@ def impute_the_target(args):
     all_ground_truth = []
     break_points = list(np.arange(0, dr.VARIANT_COUNT, args.sites_per_model)) + [dr.VARIANT_COUNT]
     
-    # 用于收集所有chunk的metrics
-    all_metrics = {
-        'accuracy': [],
-        'r2_score': [],
-        'r2_score_minimac3': []
-    }
 
     for w in range(len(break_points) - 1):
         pprint(f"Imputing chunk {w + 1}/{len(break_points) - 1}")
@@ -1684,7 +1678,7 @@ def impute_the_target(args):
         )
         
         # 编译模型用于评估
-        if args.calculate_metrics:
+        if args.testmode:
             model.compile(
                 optimizer='adam',
                 loss=ImputationLoss(use_r2_loss=args.use_r2),
@@ -1717,6 +1711,12 @@ def impute_the_target(args):
                 pprint(f"Chunk {w+1} Metrics: {metrics_results}")
                 
                 # 记录到wandb
+                # 用于收集所有chunk的metrics
+                all_metrics = {
+                    'accuracy': [],
+                    'r2_score': [],
+                    'r2_score_minimac3': []
+                }
                 if args.use_wandb and wandb.run is not None:
                     wandb_metrics = {f"chunk_{w+1}_{k}": v for k, v in metrics_results.items()}
                     wandb.log(wandb_metrics)
