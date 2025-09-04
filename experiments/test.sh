@@ -6,11 +6,13 @@ python3 STICI_V1.1.py \
     --use-r2 true \
     --tihp 1 \
     --save-dir ./alaki \
-    --epochs 10 \
+    --use-r2 true \
+    --epochs 50 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
     --testmode true \
     --wandb-runname "try_testmode_mask" \
+
 
 # python3 STICI_V1.1.py \
 #     --mode train \
