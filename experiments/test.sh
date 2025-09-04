@@ -1,20 +1,26 @@
 python3 STICI_V1.1.py \
-    --mode train \
+    --mode impute \
+    --target ./data/hapgen/22merged_30720.vcf.gz \
     --restart-training 1 \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
+    --use-r2 true \
     --tihp 1 \
     --save-dir ./alaki \
     --use-r2 true \
     --epochs 50 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "base_50epoch" \
+    --testmode true \
+    --wandb-runname "try_testmode_mask" \
+
 
 # python3 STICI_V1.1.py \
 #     --mode train \
+    # --restart-training 1 \
 #     --which-chunk 1 \
 #     --save-dir ./alaki \
 #     --ref ./data/STI_benchmark_datasets/ALL.chr22.training.samples.100k.any.type.0.01.maf.variants.vcf.gz \
+#     --target ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
 #     --min-mr 0.85 \
 #     --max-mr 0.95 \
 #     --cs 2048 \

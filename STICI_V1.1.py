@@ -53,6 +53,9 @@ from tensorflow.python.saved_model import tag_constants
 from tqdm import tqdm
 from typing import Union
 
+import wandb
+# from wandb.integration.keras import WandbCallback
+
 
 class bcolors:
     HEADER = '\033[95m'
@@ -69,6 +72,27 @@ class bcolors:
 def pprint(text):
     print(f"{bcolors.OKGREEN}{text}{bcolors.ENDC}")
 
+def init_wandb(args, chunk_idx=None):
+    if args.use_wandb:
+        # run_name = f"{args.wandb_runname}_chunk{chunk_idx}" if chunk_idx is not None else args.wandb_runname
+        wandb.init(
+            project="STICI",
+            name=args.wandb_runname,
+            config={
+                "learning_rate": args.lr,
+                "epochs": args.epochs,
+                "batch_size": args.batch_size_per_gpu,
+                "embed_dim": args.embed_dim,
+                "num_heads": args.na_heads,
+                "chunk_size": args.cs,
+                "chunk_overlap": args.co,
+                "min_mr": args.min_mr,
+                "max_mr": args.max_mr,
+                "sites_per_model": args.sites_per_model,
+                "use_r2": args.use_r2,
+                "use_wandb": args.use_wandb
+            }
+        )
 
 # logging.basicConfig(level=logging.WARNING)
 pprint("Tensorflow version " + tf.__version__)
@@ -434,6 +458,14 @@ custom_objects = {"STICI": STICI,
                   "TransformerBlock": TransformerBlock,
                   "CrossAttentionLayer": CrossAttentionLayer}
 
+def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
+        mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
+        gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
+        denom = gt_alt_af * (1.0 - gt_alt_af)
+        denom = tf.where(denom < 0.01, 0.01, denom)
+        r2 = tf.reduce_mean(tf.square(pred_alt_allele_probs - gt_alt_af), axis=0) / denom
+        r2 = tf.where(mask, tf.zeros_like(r2), r2)
+        return r2
 
 ## Loss
 import tensorflow as tf
@@ -445,22 +477,32 @@ class ImputationLoss(tf.keras.losses.Loss):
         self.kld_loss_obj = tf.keras.losses.KLDivergence(reduction=tf.keras.losses.Reduction.SUM)
         self.use_r2_loss = use_r2_loss
 
-    def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
-        mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
-        gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
-        denom = gt_alt_af * (1.0 - gt_alt_af)
-        denom = tf.where(denom < 0.01, 0.01, denom)
-        r2 = tf.reduce_mean(tf.square(pred_alt_allele_probs - gt_alt_af), axis=0) / denom
-        r2 = tf.where(mask, tf.zeros_like(r2), r2)
-        return r2
+        # Store loss values
+        self.ce_loss_val = 0.0
+        self.kl_loss_val = 0.0
+        if self.use_r2_loss:
+            self.r2_loss_val = 0.0
+    
+    def get_ce_loss(self):
+        return self.ce_loss_val
+    
+    def get_kl_loss(self):
+        return self.kl_loss_val
+    
+    def get_r2_loss(self):
+        return self.r2_loss_val if self.use_r2_loss else 0.0
 
     def call(self, y_true, y_pred):
         y_true = tf.cast(y_true, y_pred.dtype)
 
         cat_loss = self.ce_loss_obj(y_true, y_pred)
         kl_loss = self.kld_loss_obj(y_true, y_pred)
+        
+        self.ce_loss_val = cat_loss
+        self.kl_loss_val = kl_loss
 
         total_loss = cat_loss + kl_loss
+        # total_loss = 0
 
         if self.use_r2_loss:
             batch_size = tf.shape(y_true)[0]
@@ -476,7 +518,7 @@ class ImputationLoss(tf.keras.losses.Loss):
                 gt_alt_af = tf.cast(tf.math.count_nonzero(tf.argmax(y_true_grouped[i], axis=-1), axis=0), tf.int32) / group_size
                 gt_alt_af = tf.cast(gt_alt_af, tf.float32)
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_grouped[i][:, :, 1:], axis=-1)
-                r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(group_size, tf.float32)
+                r2_loss += -tf.reduce_sum(calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(group_size, tf.float32)
 
             if num_remainder_samples > 0:
                 remainder_start_index = num_full_groups * group_size
@@ -486,10 +528,248 @@ class ImputationLoss(tf.keras.losses.Loss):
                 gt_alt_af = tf.cast(tf.math.count_nonzero(tf.argmax(y_true_remainder, axis=-1), axis=0), tf.int32) / num_remainder_samples
                 gt_alt_af = tf.cast(gt_alt_af, tf.float32)
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
-                r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
-
+                r2_loss += -tf.reduce_sum(calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
+            
+            # wandb.log({"r2_loss": r2_loss})
+            # self.r2_loss_val = r2_loss
             total_loss += r2_loss
+        
+        # wandb.log({"loss": total_loss})
         return total_loss
+
+# Record each loss
+class LossLogger(tf.keras.callbacks.Callback):
+    def __init__(self, use_wandb=False):
+        super(LossLogger, self).__init__()
+        self.use_wandb = use_wandb
+        self.loss_history = {
+            'total_loss': [],
+            'ce_loss': [],
+            'kl_loss': [],
+            'r2_loss': []
+        }
+        
+    def on_epoch_end(self, epoch, logs=None):
+        
+        if hasattr(self.model.loss, 'get_ce_loss'):
+            ce_loss = self.model.loss.get_ce_loss()
+            if ce_loss is not None:
+                ce_loss_value = K.get_value(ce_loss)
+                self.loss_history['ce_loss'].append(ce_loss_value)
+                logs['ce_loss'] = ce_loss.numpy() if logs is not None else None
+        
+        if hasattr(self.model.loss, 'get_kl_loss'):
+            kl_loss = self.model.loss.get_kl_loss()
+            if kl_loss is not None:
+                kl_loss_value = K.get_value(kl_loss)
+                self.loss_history['kl_loss'].append(kl_loss_value)
+                logs['kl_loss'] = kl_loss.numpy() if logs is not None else None
+        
+        if hasattr(self.model.loss, 'get_r2_loss'):
+            r2_loss = self.model.loss.get_r2_loss()
+            if r2_loss is not None:
+                r2_loss_value = K.get_value(r2_loss)
+                self.loss_history['r2_loss'].append(r2_loss_value)
+                logs['r2_loss'] = r2_loss.numpy() if logs is not None else None
+        
+        if self.use_wandb and wandb.run is not None:
+            wandb.log({
+                'total_loss': self.loss_history['total_loss'][-1] if self.loss_history['total_loss'] else 0,
+                'ce_loss': self.loss_history['ce_loss'][-1] if self.loss_history['ce_loss'] else 0,
+                'kl_loss': self.loss_history['kl_loss'][-1] if self.loss_history['kl_loss'] else 0,
+                'r2_loss': self.loss_history['r2_loss'][-1] if self.loss_history['r2_loss'] else 0,
+            })
+
+# class R2Metric(tf.keras.metrics.Metric):
+#     def __init__(self, name='r2_metric', **kwargs):
+#         super(R2Metric, self).__init__(name=name, **kwargs)
+#         self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
+#         self.sample_count = self.add_weight(name='sample_count', initializer='zeros')
+
+#     def update_state(self, y_true, y_pred, sample_weight=None):
+#         # 处理分组逻辑
+#         batch_size = tf.shape(y_true)[0]
+#         group_size = 4
+#         num_full_groups = batch_size // group_size
+#         num_remainder_samples = batch_size % group_size
+
+#         total_r2 = 0.0
+#         total_valid_variants = 0
+        
+#         # 处理完整的分组
+#         if num_full_groups > 0:
+#             y_true_grouped = tf.reshape(y_true[:num_full_groups * group_size], 
+#                                        (num_full_groups, group_size, -1, y_true.shape[-1]))
+#             y_pred_grouped = tf.reshape(y_pred[:num_full_groups * group_size], 
+#                                        (num_full_groups, group_size, -1, y_pred.shape[-1]))
+            
+#             for i in range(num_full_groups):
+#                 # 计算每个变异的等位基因频率
+#                 gt_alt_af = tf.reduce_mean(tf.argmax(y_true_grouped[i], axis=-1, output_type=tf.float32), axis=0)
+#                 pred_alt_allele_probs = tf.reduce_sum(y_pred_grouped[i][:, :, 1:], axis=-1)
+                
+#                 # 调用外部函数
+#                 r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
+#                 total_r2 += tf.reduce_sum(r2_values)
+#                 total_valid_variants += tf.reduce_sum(tf.cast(tf.not_equal(r2_values, 0.0), tf.float32))
+
+#         # 处理剩余的样本
+#         if num_remainder_samples > 0:
+#             remainder_start_index = num_full_groups * group_size
+#             y_true_remainder = y_true[remainder_start_index:]
+#             y_pred_remainder = y_pred[remainder_start_index:]
+
+#             # 计算每个变异的等位基因频率
+#             gt_alt_af = tf.reduce_mean(tf.argmax(y_true_remainder, axis=-1, output_type=tf.float32), axis=0)
+#             pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
+            
+#             # 调用外部函数
+#             r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
+#             total_r2 += tf.reduce_sum(r2_values)
+#             total_valid_variants += tf.reduce_sum(tf.cast(tf.not_equal(r2_values, 0.0), tf.float32))
+
+#         # 更新状态变量
+#         self.r2_sum.assign_add(total_r2)
+#         self.sample_count.assign_add(tf.cast(total_valid_variants, tf.float32))
+
+#     def result(self):
+#         return tf.math.divide_no_nan(self.r2_sum, self.sample_count)
+
+#     def reset_state(self):
+#         self.r2_sum.assign(0.0)
+#         self.sample_count.assign(0.0)
+
+# class MinimacR2Metric(tf.keras.metrics.Metric):
+#     """
+#     A custom Keras metric to calculate the average Minimac R2 score
+#     across all batches.
+#     """
+#     def __init__(self, name='minimac_r2', **kwargs):
+#         super(MinimacR2Metric, self).__init__(name=name, **kwargs)
+#         self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
+#         self.sample_count = self.add_weight(name='sample_count', initializer='zeros')
+
+#     def update_state(self, y_true, y_pred, sample_weight=None):
+#         # Flatten the tensors to handle multi-dimensional outputs if needed
+#         y_true = tf.cast(y_true, tf.float32)
+#         y_pred = tf.cast(y_pred, tf.float32)
+
+#         # Assuming -1 is the missing value
+#         mask = tf.cast(tf.math.not_equal(y_true, -1.0), tf.float32)
+
+#         # Calculate R2 for the current batch
+#         batch_r2 = calculate_Minimac_R2(y_true, y_pred, mask)
+#         batch_r2 = tf.reduce_mean(batch_r2)
+        
+#         # Count the number of samples in the current batch
+#         batch_size = tf.cast(tf.shape(y_true)[0], tf.float32)
+        
+#         # Update the state variables
+#         self.r2_sum.assign_add(batch_r2 * batch_size)
+#         self.sample_count.assign_add(batch_size)
+
+#     def result(self):
+#         # Return the overall average R2 score
+#         return tf.math.divide_no_nan(self.r2_sum, self.sample_count)
+
+#     def reset_state(self):
+#         # Reset the state variables at the beginning of each epoch
+#         self.r2_sum.assign(0.0)
+#         self.sample_count.assign(0.0)
+
+
+
+class MinimacR2Metric(tf.keras.metrics.Metric):
+    """
+    A custom Keras metric to calculate the Minimac-style R² across batches.
+    This computes the squared correlation between predicted allele dosages
+    and true genotypes, then averages over variants.
+    """
+
+    def __init__(self, name='minimac_r2', **kwargs):
+        super(MinimacR2Metric, self).__init__(name=name, **kwargs)
+        self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
+        self.variant_count = self.add_weight(name='variant_count', initializer='zeros')
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        """
+        y_true: shape (batch_size, num_variants, num_classes)
+        y_pred: shape (batch_size, num_variants, num_classes)
+        Assumes last dimension = genotype categories (e.g., 3 for diploid: [0,1,2]).
+        """
+
+        # 转换为 float32
+        y_true = tf.cast(y_true, tf.float32)
+        y_pred = tf.cast(y_pred, tf.float32)
+
+        # one-hot → genotype dosage (取 argmax 就是GT，或者加权求期望值是dosage)
+        true_dosage = tf.cast(tf.argmax(y_true, axis=-1), tf.float32)  # (batch, variants)
+        pred_dosage = tf.reduce_sum(y_pred * tf.range(tf.shape(y_pred)[-1], dtype=tf.float32), axis=-1)
+
+        # 按 variant 计算均值
+        true_mean = tf.reduce_mean(true_dosage, axis=0)  # (variants,)
+        pred_mean = tf.reduce_mean(pred_dosage, axis=0)  # (variants,)
+
+        # 协方差 & 方差
+        cov = tf.reduce_mean((true_dosage - true_mean) * (pred_dosage - pred_mean), axis=0)
+        var_true = tf.reduce_mean(tf.square(true_dosage - true_mean), axis=0)
+        var_pred = tf.reduce_mean(tf.square(pred_dosage - pred_mean), axis=0)
+
+        # per-variant R²
+        r2_per_variant = tf.math.divide_no_nan(tf.square(cov), var_true * var_pred)
+
+        # 累加
+        self.r2_sum.assign_add(tf.reduce_sum(r2_per_variant))
+        self.variant_count.assign_add(tf.cast(tf.shape(r2_per_variant)[0], tf.float32))
+
+    def result(self):
+        return tf.math.divide_no_nan(self.r2_sum, self.variant_count)
+
+    def reset_state(self):
+        self.r2_sum.assign(0.0)
+        self.variant_count.assign(0.0)
+
+
+class Minimac3R2Metric(tf.keras.metrics.Metric):
+    """
+    Minimac3-style R² metric:
+    Var(observed dosage) / (2 * p * (1 - p)),
+    where p is the sample allele frequency.
+    """
+    def __init__(self, name="minimac3_r2", **kwargs):
+        super(Minimac3R2Metric, self).__init__(name=name, **kwargs)
+        self.r2_sum = self.add_weight(name="r2_sum", initializer="zeros")
+        self.variant_count = self.add_weight(name="variant_count", initializer="zeros")
+
+    def update_state(self, y_true, y_pred, sample_weight=None):
+        # Convert y_pred to dosage (shape: [batch, num_variants])
+        # assuming last dim is genotype probs: [p0, p1, p2]
+        y_pred = tf.cast(y_pred, tf.float32)
+        genotype_probs = tf.reshape(y_pred, [-1, y_pred.shape[-2], y_pred.shape[-1]])
+        dosage = tf.reduce_sum(genotype_probs * tf.constant([0.0, 1.0, 2.0], dtype=tf.float32), axis=-1)
+
+        # Compute allele frequency p per variant
+        p = tf.reduce_mean(dosage, axis=0) / 2.0  # shape [num_variants]
+
+        # Variance of dosage per variant
+        var_obs = tf.math.reduce_variance(dosage, axis=0)  # shape [num_variants]
+
+        # Expected variance under HWE
+        var_exp = 2.0 * p * (1.0 - p)  # shape [num_variants]
+
+        # Minimac3-style R²
+        r2 = tf.math.divide_no_nan(var_obs, var_exp)  # shape [num_variants]
+
+        # Update running sums
+        self.r2_sum.assign_add(tf.reduce_sum(r2))
+        self.variant_count.assign_add(tf.cast(tf.shape(r2)[0], tf.float32))
+
+    def result(self):
+        return tf.math.divide_no_nan(self.r2_sum, self.variant_count)
+
+    def reset_state(self):
+        self.r2_sum.assign(0.0)
+        self.variant_count.assign(0.0)
 
 
 ## Model creation
@@ -503,12 +783,24 @@ def create_model(args):
                              offset_after=args["offset_after"])
     optimizer = tfa.optimizers.LAMB(learning_rate=args["lr"])
     # optimizer = tf.optimizers.AdamW(learning_rate=args["lr"], weight_decay=1e-5)
+    
+    # metrics = [
+    #         tf.keras.metrics.CategoricalAccuracy(),
+    #         R2Metric()
+    #     ]
+    metrics = [
+        tf.keras.metrics.CategoricalAccuracy(name='accuracy'),
+        MinimacR2Metric(name='r2_score'),
+        Minimac3R2Metric(name='r2_score_minimac3')
+    ]
+    
+
     model.compile(optimizer, loss=ImputationLoss(use_r2_loss=args["use_r2"]),
-                  metrics=tf.keras.metrics.CategoricalAccuracy())
+                  metrics=metrics)
     return model
 
 
-def create_callbacks(metric="loss", save_path="."):
+def create_callbacks(metric="loss", save_path=".", use_wandb=False):
     reducelr = tf.keras.callbacks.ReduceLROnPlateau(
         monitor=metric,
         mode='auto',
@@ -539,8 +831,12 @@ def create_callbacks(metric="loss", save_path="."):
     callbacks = [
         reducelr,
         earlystop,
+        # LossLogger(use_wandb=use_wandb),
         # checkpoint
     ]
+
+    if use_wandb:  
+        callbacks.append(wandb.keras.WandbCallback())
 
     return callbacks
 
@@ -613,7 +909,7 @@ class DataReader:
         if data_header is None:
             raise IOError("The file only contains comments!")
         df = dt.fread(file=file_path,
-                      sep=separator, header=True, skip_to_line=line_counter + 1)
+                      sep=separator, header=True, skip_to_line=line_counter + 1, fill=True)
         df = df.to_pandas()  # .astype('category')
         if first_column_is_index:
             df.set_index(df.columns[0], inplace=True)
@@ -1049,6 +1345,23 @@ def get_test_dataset(x, batch_size, depth, strategy):
 
     return dataset
 
+def get_test_dataset_with_masking(x, batch_size, depth, strategy, min_mr, max_mr, ground_truth):
+    AUTO = tf.data.AUTOTUNE
+    
+    # 创建包含输入和ground truth的数据集
+    dataset = tf.data.Dataset.from_tensor_slices((x, ground_truth))
+    
+    # 使用add_attention_mask进行masking
+    dataset = dataset.map(
+        lambda xx, yy: add_attention_mask(xx, yy, depth, min_mr, max_mr),
+        num_parallel_calls=AUTO,
+        deterministic=False
+    )
+    
+    dataset = dataset.prefetch(AUTO)
+    dataset = dataset.batch(batch_size, drop_remainder=False, num_parallel_calls=AUTO)
+    
+    return dataset
 
 def create_directories(save_dir,
                        models_dir="models",
@@ -1103,11 +1416,15 @@ def train_the_model(args) -> None:
     assert args.min_mr > 0
     assert args.max_mr >= args.min_mr
     NUM_EPOCHS = args.epochs
+
+    if args.use_wandb:
+        init_wandb(args)
+
     strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.ReductionToOneDevice())
     N_REPLICAS = strategy.num_replicas_in_sync
     pprint(f"Num gpus to be used: {N_REPLICAS}")
     BATCH_SIZE = args.batch_size_per_gpu * N_REPLICAS
-
+    
     create_directories(args.save_dir)
     with open(f"{args.save_dir}/commandline_args.json", 'w') as f:
         json.dump(args.__dict__, f, indent=4)
@@ -1136,6 +1453,8 @@ def train_the_model(args) -> None:
             continue
 
         pprint(f"Training on chunk {w + 1}/{len(break_points) - 1}")
+        # if args.use_wandb:
+        #     wandb.log({"current_chunk": w + 1, "total_chunks": len(break_points) - 1})
         final_start_pos = max(0, break_points[w] - 2 * args.co)
         final_end_pos = min(dr.VARIANT_COUNT, break_points[w + 1] + 2 * args.co)
         offset_before = break_points[w] - final_start_pos
@@ -1161,7 +1480,7 @@ def train_the_model(args) -> None:
         validation_steps = len(x_valid_indices) // BATCH_SIZE
         
         K.clear_session()
-        callbacks = create_callbacks(save_path=f"{args.save_dir}/models/w_{w}/cp.ckpt")
+        callbacks = create_callbacks(save_path=f"{args.save_dir}/models/w_{w}/cp.ckpt",use_wandb=args.use_wandb,)
         model_args = {
             "embedding_dim": args.embed_dim,
             "num_heads": args.na_heads,
@@ -1189,6 +1508,9 @@ def train_the_model(args) -> None:
             # tf.saved_model.save(model, f"{args.save_dir}/models/w_{w}.keras")
             chunks_done[w] = True
             save_chunk_status(args.save_dir, chunks_done)
+        
+        if args.use_wandb:
+            wandb.finish()
     pass
 
 
@@ -1196,6 +1518,10 @@ def impute_the_target(args):
     from tensorflow.keras import mixed_precision
 
     mixed_precision.set_global_policy('mixed_float16')
+    
+    # if args.use_wandb:
+    #     init_wandb(args)
+    #     pprint("Weights & Biases logging enabled for imputation")
 
     strategy = tf.distribute.get_strategy()
     # strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.ReductionToOneDevice())
@@ -1306,6 +1632,15 @@ def main():
                                       help='Whether to clean previously saved models in target directory and restart the training',
                                       choices=['false', 'true', '0', '1'], default='0')
     deciding_args, _ = deciding_args_parser.parse_known_args()
+    deciding_args_parser.add_argument('--use-wandb', type=str, required=False,
+                        help='Whether to use Weights and Biases for logging (default=True).',
+                        choices=['false', 'true', '0', '1'],default='1')
+    deciding_args_parser.add_argument('--wandb-runname', type=str, required=False,
+                        help='The name of the Weights and Biases run (default="STICI_v1.1").',
+                        default='STICI_v1.1')
+    deciding_args_parser.add_argument('--testmode', type=str, required=False,
+                        help='Whether to run in test mode and mask test data (default=False).',
+                        choices=['false', 'true', '0', '1'], default='0')
     parser = argparse.ArgumentParser(
         description="", parents=[deciding_args_parser])
     ## Input args
@@ -1409,6 +1744,7 @@ def main():
     args.target_vac = str_to_bool(args.target_vac)
     args.ref_fcai = str_to_bool(args.ref_fcai)
     args.target_fcai = str_to_bool(args.target_fcai)
+    args.use_wandb = str_to_bool(args.use_wandb)
 
     if not (args.save_dir.startswith("./") or args.save_dir.startswith("/")):
         args.save_dir = f"./{args.save_dir}"
