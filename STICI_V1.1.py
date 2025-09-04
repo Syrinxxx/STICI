@@ -1345,6 +1345,23 @@ def get_test_dataset(x, batch_size, depth, strategy):
 
     return dataset
 
+def get_test_dataset_with_masking(x, batch_size, depth, strategy, min_mr, max_mr, ground_truth):
+    AUTO = tf.data.AUTOTUNE
+    
+    # 创建包含输入和ground truth的数据集
+    dataset = tf.data.Dataset.from_tensor_slices((x, ground_truth))
+    
+    # 使用add_attention_mask进行masking
+    dataset = dataset.map(
+        lambda xx, yy: add_attention_mask(xx, yy, depth, min_mr, max_mr),
+        num_parallel_calls=AUTO,
+        deterministic=False
+    )
+    
+    dataset = dataset.prefetch(AUTO)
+    dataset = dataset.batch(batch_size, drop_remainder=False, num_parallel_calls=AUTO)
+    
+    return dataset
 
 def create_directories(save_dir,
                        models_dir="models",
@@ -1501,6 +1518,10 @@ def impute_the_target(args):
     from tensorflow.keras import mixed_precision
 
     mixed_precision.set_global_policy('mixed_float16')
+    
+    # if args.use_wandb:
+    #     init_wandb(args)
+    #     pprint("Weights & Biases logging enabled for imputation")
 
     strategy = tf.distribute.get_strategy()
     # strategy = tf.distribute.MirroredStrategy(cross_device_ops=tf.distribute.ReductionToOneDevice())
@@ -1617,6 +1638,9 @@ def main():
     deciding_args_parser.add_argument('--wandb-runname', type=str, required=False,
                         help='The name of the Weights and Biases run (default="STICI_v1.1").',
                         default='STICI_v1.1')
+    deciding_args_parser.add_argument('--testmode', type=str, required=False,
+                        help='Whether to run in test mode and mask test data (default=False).',
+                        choices=['false', 'true', '0', '1'], default='0')
     parser = argparse.ArgumentParser(
         description="", parents=[deciding_args_parser])
     ## Input args

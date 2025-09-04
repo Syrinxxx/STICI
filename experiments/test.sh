@@ -1,14 +1,16 @@
 python3 STICI_V1.1.py \
-    --mode train \
+    --mode impute \
+    --target ./data/hapgen/22merged_30720.vcf.gz \
     --restart-training 1 \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
-    --use-r2 false \
+    --use-r2 true \
     --tihp 1 \
     --save-dir ./alaki \
     --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "try_r2_minimac3" \
+    --testmode true \
+    --wandb-runname "try_testmode_mask" \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
