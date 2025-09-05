@@ -1681,7 +1681,8 @@ def impute_the_target(args):
         K.clear_session()
         
         model = tf.keras.models.load_model(
-            f"{args.save_dir}/models/w_{w}.ckpt",
+            f"{args.save_dir}/models/w_{w}",
+            # f"{args.save_dir}/models/w_{w}.ckpt",
             custom_objects=custom_objects,
             compile=False
         )
