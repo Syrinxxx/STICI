@@ -1694,7 +1694,7 @@ def impute_the_target(args):
             predict_onehot = model.predict(test_dataset, verbose=args.verbose, steps=steps)
             
             # 计算metrics
-            if args.calculate_metrics:
+            if args.testmode:
                 # 准备ground truth的one-hot编码
                 ground_truth = test_dataset_np[:, :predict_onehot.shape[1]]
                 ground_truth_onehot = tf.one_hot(ground_truth, dr.SEQ_DEPTH - 1 if not dr.is_phased else dr.SEQ_DEPTH).numpy()
@@ -1729,7 +1729,7 @@ def impute_the_target(args):
         all_ground_truth.append(test_dataset_np)
     
     # 输出总体metrics
-    if args.calculate_metrics:
+    if args.testmode:
         pprint("Overall Metrics across all chunks:")
         overall_metrics = {}
         for metric_name, values in all_metrics.items():
