@@ -1695,14 +1695,14 @@ def impute_the_target(args):
             
             # 计算metrics
             if args.testmode:
-                # 准备ground truth的one-hot编码
-                ground_truth = test_dataset_np[:, :predict_onehot.shape[1]]
-                ground_truth_onehot = tf.one_hot(ground_truth, dr.SEQ_DEPTH - 1 if not dr.is_phased else dr.SEQ_DEPTH).numpy()
+                # # 准备ground truth的one-hot编码
+                # ground_truth = test_dataset_np[:, :predict_onehot.shape[1]]
+                # ground_truth_onehot = tf.one_hot(ground_truth, dr.SEQ_DEPTH - 1 if not dr.is_phased else dr.SEQ_DEPTH).numpy()
                 
                 # 计算metrics
                 metrics_results = model.evaluate(
                     test_dataset, 
-                    ground_truth_onehot, 
+                    # ground_truth_onehot, 
                     verbose=0,  # 减少输出噪音
                     steps=steps,
                     return_dict=True
