@@ -1654,15 +1654,24 @@ def impute_the_target(args):
     break_points = list(np.arange(0, dr.VARIANT_COUNT, args.sites_per_model)) + [dr.VARIANT_COUNT]
     
 
+    all_metrics = {
+        'accuracy': [],
+        'r2_score': [], 
+        'r2_score_minimac3': []
+    }
+    
     for w in range(len(break_points) - 1):
         pprint(f"Imputing chunk {w + 1}/{len(break_points) - 1}")
+        ## 计算当前chunk的offset参数（与训练时保持一致）
         final_start_pos = max(0, break_points[w] - 2 * args.co)
         final_end_pos = min(dr.VARIANT_COUNT, break_points[w + 1] + 2 * args.co)
+        offset_before = break_points[w] - final_start_pos
+        offset_after = final_end_pos - break_points[w + 1]
         
-        # 获取完整的ground truth
+        ## 获取完整的ground truth
         test_dataset_np = dr.get_target_set(final_start_pos, final_end_pos).astype(np.int32)
         
-        # 使用add_attention_mask创建masked数据集
+        ## 使用add_attention_mask创建masked数据集
         test_dataset = get_test_dataset_with_masking(
             test_dataset_np, BATCH_SIZE, dr.SEQ_DEPTH, strategy, 
             args.min_mr, args.max_mr, test_dataset_np
@@ -1677,91 +1686,87 @@ def impute_the_target(args):
             compile=False
         )
         
-        # 编译模型用于评估
-        if args.testmode:
-            model.compile(
-                optimizer='adam',
-                loss=ImputationLoss(use_r2_loss=args.use_r2),
-                metrics=[
-                    tf.keras.metrics.CategoricalAccuracy(name='accuracy'),
-                    MinimacR2Metric(name='r2_score'),
-                    Minimac3R2Metric(name='r2_score_minimac3')
-                ]
-            )
-        
         with strategy.scope():
-            # 预测masked数据
+            ## 预测masked数据
             predict_onehot = model.predict(test_dataset, verbose=args.verbose, steps=steps)
             
-            # 计算metrics
+            ## 计算metrics
             if args.testmode:
-                # # 准备ground truth的one-hot编码
-                # ground_truth = test_dataset_np[:, :predict_onehot.shape[1]]
-                # ground_truth_onehot = tf.one_hot(ground_truth, dr.SEQ_DEPTH - 1 if not dr.is_phased else dr.SEQ_DEPTH).numpy()
+                ## 准备ground truth的one-hot编码 - 应用offsets来匹配模型输出
+                ground_truth = test_dataset_np[:, offset_before:test_dataset_np.shape[1] - offset_after]
+                ground_truth_onehot = tf.one_hot(ground_truth, dr.SEQ_DEPTH - 1 if not dr.is_phased else dr.SEQ_DEPTH).numpy()
                 
-                # 计算metrics
-                metrics_results = model.evaluate(
-                    test_dataset, 
-                    # ground_truth_onehot, 
-                    verbose=0,  # 减少输出噪音
-                    steps=steps,
-                    return_dict=True
-                )
+                ## 手动计算metrics（因为dataset结构不匹配，无法使用model.evaluate）
+                accuracy_metric = tf.keras.metrics.CategoricalAccuracy()
+                r2_metric = MinimacR2Metric()
+                r2_minimac3_metric = Minimac3R2Metric()
+                
+                ## 重置metrics状态
+                accuracy_metric.reset_state()
+                r2_metric.reset_state()
+                r2_minimac3_metric.reset_state()
+                
+                ## 更新metrics
+                accuracy_metric.update_state(ground_truth_onehot, predict_onehot)
+                r2_metric.update_state(ground_truth_onehot, predict_onehot)
+                r2_minimac3_metric.update_state(ground_truth_onehot, predict_onehot)
+                
+                ## 获取当前chunk的metrics结果
+                metrics_results = {
+                    'accuracy': accuracy_metric.result().numpy(),
+                    'r2_score': r2_metric.result().numpy(),
+                    'r2_score_minimac3': r2_minimac3_metric.result().numpy()
+                }
                 
                 pprint(f"Chunk {w+1} Metrics: {metrics_results}")
                 
-                # 记录到wandb
-                # 用于收集所有chunk的metrics
-                all_metrics = {
-                    'accuracy': [],
-                    'r2_score': [],
-                    'r2_score_minimac3': []
-                }
+                ## 记录到wandb（每个chunk单独记录）
                 if args.use_wandb and wandb.run is not None:
-                    wandb_metrics = {f"chunk_{w+1}_{k}": v for k, v in metrics_results.items()}
-                    wandb.log(wandb_metrics)
+                    wandb.log({
+                        f'chunk_{w+1}_accuracy': metrics_results['accuracy'],
+                        f'chunk_{w+1}_r2_score': metrics_results['r2_score'],
+                        f'chunk_{w+1}_r2_score_minimac3': metrics_results['r2_score_minimac3'],
+                        'current_chunk': w + 1
+                    })
                 
-                for metric_name in all_metrics.keys():
-                    if metric_name in metrics_results:
-                        all_metrics[metric_name].append(metrics_results[metric_name])
+                ## 收集所有chunk的metrics用于计算平均值
+                all_metrics['accuracy'].append(metrics_results['accuracy'])
+                all_metrics['r2_score'].append(metrics_results['r2_score'])
+                all_metrics['r2_score_minimac3'].append(metrics_results['r2_score_minimac3'])
         
         all_preds.append(predict_onehot.astype(np.float32))
-        all_ground_truth.append(test_dataset_np)
     
-    # 输出总体metrics
-    if args.testmode:
-        pprint("Overall Metrics across all chunks:")
+    ## 计算并输出总体metrics（所有chunk的平均值）
+    if args.testmode and all_metrics['accuracy']:
         overall_metrics = {}
+        pprint("Overall Metrics across all chunks (averaged):")
+        
         for metric_name, values in all_metrics.items():
             if values:
+                ## 计算平均值和标准差
                 avg_value = np.mean(values)
-                overall_metrics[f"overall_{metric_name}"] = avg_value
-                pprint(f"{metric_name}: {avg_value:.4f}")
+                std_value = np.std(values)
+                overall_metrics[f'overall_{metric_name}'] = avg_value
+                overall_metrics[f'overall_{metric_name}_std'] = std_value
+                pprint(f"{metric_name}: {avg_value:.4f} ± {std_value:.4f}")
         
-        # 记录总体metrics到wandb
+        ## 记录总体metrics到wandb
         if args.use_wandb and wandb.run is not None:
             wandb.log(overall_metrics)
-            
-            # 还可以记录一些统计信息
-            # wandb.log({
-            #     "total_chunks": len(break_points) - 1,
-            #     "total_variants": dr.VARIANT_COUNT,
-            #     "masking_rate_min": args.min_mr,
-            #     "masking_rate_max": args.max_mr
-            # })
+            wandb.log({
+                "total_chunks": len(break_points) - 1,
+                "total_variants": dr.VARIANT_COUNT,
+                "masking_rate_min": args.min_mr,
+                "masking_rate_max": args.max_mr
+            })
     
-    # 生成最终预测结果
+    ## 生成最终预测结果
     all_preds = np.hstack(all_preds)
     destination_file_path = dr.write_ligated_results_to_file(
         dr.preds_to_genotypes(all_preds),
         f"{args.save_dir}/out/ligated_results",
         compress=args.compress_results
     )
-    
-    # 记录完成信息到wandb
-    # if args.use_wandb and wandb.run is not None:
-    #     wandb.log({"imputation_completed": 1})
-    #     wandb.finish()
     
     pprint(f"Done! Please find the file at {destination_file_path}")
 
