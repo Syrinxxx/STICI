@@ -1,15 +1,27 @@
 python3 STICI_V1.1.py \
-    --mode impute \
+    --mode train \
     --restart-training 1 \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
-    --target ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
     --tihp 1 \
     --save-dir ./alaki \
     --use-r2 true \
-    --epochs 50 \
+    --epochs 2 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "debug_impute_original" \
+    --wandb-runname "debug_WandbfinishOutsideFor" \
+
+# python3 STICI_V1.1.py \
+#     --mode impute \
+#     --restart-training 1 \
+#     --ref ./data/hapgen/22merged_30720.vcf.gz \
+#     --target ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
+#     --tihp 1 \
+#     --save-dir ./alaki \
+#     --use-r2 true \
+#     --epochs 50 \
+#     --batch-size-per-gpu 3 \
+#     --use-wandb true \
+#     --wandb-runname "debug_impute_original" \
 
 
 # python3 STICI_V1.1.py \

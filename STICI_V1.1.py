@@ -1510,9 +1510,11 @@ def train_the_model(args) -> None:
             chunks_done[w] = True
             save_chunk_status(args.save_dir, chunks_done)
         
-        if args.use_wandb:
-            wandb.finish()
+        # if args.use_wandb:
+        #     wandb.finish()
     pass
+    if args.use_wandb:
+            wandb.finish()
 
 
 def impute_the_target(args):
