@@ -5,10 +5,10 @@ python3 STICI_V1.1.py \
     --tihp 1 \
     --save-dir ./alaki \
     --use-r2 true \
-    --epochs 2 \
+    --epochs 50 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "debug_WandbfinishOutsideFor" \
+    --wandb-runname "try_base50_allchunk" \
 
 # python3 STICI_V1.1.py \
 #     --mode impute \
