@@ -679,7 +679,7 @@ class LossLogger(tf.keras.callbacks.Callback):
 #         self.sample_count.assign(0.0)
 
 
-
+#	Pearson correlation–style R²
 class MinimacR2Metric(tf.keras.metrics.Metric):
     """
     A custom Keras metric to calculate the Minimac-style R² across batches.
