@@ -1,6 +1,6 @@
 python3 STICI_V1.1.py \
     --mode impute \
-    --target ./data/hapgen/simu3_con_30720.vcf \
+    --target ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
