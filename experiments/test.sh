@@ -1,6 +1,6 @@
 python3 STICI_V1.1.py \
     --mode impute \
-    --target ./data/hapgen/simu3_con_30720.vcf \
+    --target ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
@@ -8,7 +8,7 @@ python3 STICI_V1.1.py \
     --epochs 2 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "testHPC_Impute" \
+    --wandb-runname "testHPC_Impute_1000GP" \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
@@ -35,6 +35,7 @@ python3 STICI_V1.1.py \
 #     --use-wandb true \
 #     --wandb-runname "debug_impute_original" \
 
+    # --target ./data/hapgen/simu3_con_30720.vcf \
 
 # python3 STICI_V1.1.py \
 #     --mode train \
