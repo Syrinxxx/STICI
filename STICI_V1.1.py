@@ -1177,6 +1177,13 @@ class DataReader:
         return np.array(genotypes)
 
     def __convert_hap_probs_to_hap_genotypes(self, allele_probs) -> np.ndarray:
+        ## debuging pprint
+        pprint(f"Input to hap conversion: shape={allele_probs.shape}")
+    
+        result = np.argmax(allele_probs, axis=2).astype(str)  # 应该是 (n_haplotypes, n_variants)
+    
+        pprint(f"Output from hap conversion: shape={result.shape}")
+        pprint(f"Sample output: {result[0, :5]}")  # 查看前5个变异
         return np.argmax(allele_probs, axis=1).astype(str)
 
     def __convert_unphased_probs_to_genotypes(self, allele_probs) -> np.ndarray:
@@ -1599,9 +1606,13 @@ def impute_the_target(args):
             )
             with strategy.scope():
                 predict_onehot = model.predict(test_dataset, verbose=args.verbose, steps=steps)
-
+        ## debuging print
+        pprint(f"Chunk {w + 1} predictions shape: {predict_onehot.shape}")        
         all_preds.append(predict_onehot.astype(np.float32))
     all_preds = np.hstack(all_preds)
+    ## debuging print
+    pprint(f"All predictions shape: {all_preds.shape}")
+    pprint(f"Expected shape: (n_samples, n_variants, n_alleles)")
     destination_file_path = dr.write_ligated_results_to_file(dr.preds_to_genotypes(all_preds),
                                                              f"{args.save_dir}/out/ligated_results",
                                                              compress=args.compress_results)
