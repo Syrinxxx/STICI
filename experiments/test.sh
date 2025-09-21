@@ -8,7 +8,7 @@ python3 STICI_V1.1.py \
     --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "try_1kgp30720_10e_allchunk" \
+    --wandb-runname "try_1kgp30720_10e_nom3r2" \
 
 # python3 STICI_V1.1.py \
 #     --mode impute \
