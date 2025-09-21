@@ -1,14 +1,14 @@
 python3 STICI_V1.1.py \
     --mode train \
     --restart-training 1 \
-    --ref ./data/hapgen/ALL.chr22.phase3_shapeit2_mvncall_integrated_v5b.20130502.genotypes.vcf \
+    --ref ./data/hapgen/1kgp_30720.vcf \
     --tihp 1 \
     --save-dir ./alaki \
     --use-r2 true \
     --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "try_1kgpall_10e_allchunk" \
+    --wandb-runname "try_1kgp30720_10e_allchunk" \
 
 # python3 STICI_V1.1.py \
 #     --mode impute \
