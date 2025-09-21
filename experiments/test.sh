@@ -1,26 +1,27 @@
 python3 STICI_V1.1.py \
-    --mode impute \
-    --target ./data/hapgen/simu3_con_30720.vcf \
-    --ref ./data/hapgen/22merged_30720.vcf.gz \
+    --mode train \
+    --restart-training 1 \
+    --ref ./data/hapgen/1kgp_30720.vcf \
     --tihp 1 \
     --save-dir ./alaki \
     --use-r2 true \
-    --epochs 2 \
+    --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "testHPC_Impute_1000GP" \
+    --wandb-runname "1kgp_10e_allchunk" \
 
 # python3 STICI_V1.1.py \
-#     --mode train \
-#     --restart-training 1 \
+#     --mode impute \
+#     --target ./data/hapgen/simu3_con_30720.vcf \
 #     --ref ./data/hapgen/22merged_30720.vcf.gz \
 #     --tihp 1 \
 #     --save-dir ./alaki \
 #     --use-r2 true \
-#     --epochs 50 \
+#     --epochs 2 \
 #     --batch-size-per-gpu 3 \
 #     --use-wandb true \
-#     --wandb-runname "try_base50_allchunk_2" \
+#     --wandb-runname "testHPC_Impute_1000GP" \
+
 
 # python3 STICI_V1.1.py \
 #     --mode impute \
