@@ -3,7 +3,7 @@ python3 STICI_V1.1.py \
     --restart-training 1 \
     --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
-    --save-dir ./alaki \
+    --save-dir ./alaki_focal1 \
     --use-r2 true \
     --use-focal-loss true \
     --focal-gamma 1.0 \
