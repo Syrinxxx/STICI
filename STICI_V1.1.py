@@ -1799,7 +1799,7 @@ def main():
     parser.add_argument('--use-focal-loss', type=str,
                         help='Whether to use focal loss (default=False).',
                         choices=['false', 'true', '0', '1'], default='0')
-    parser.add_argument('focal-gamma', type=float, nargs='?', default=1.0,
+    parser.add_argument('--focal-gamma', type=float, nargs='?', default=1.0,
                         help='Focusing parameter gamma for focal loss (default: 2.0). Only used if --use-focal-loss is true.')
     # misc
     parser.add_argument('--verbose', type=int, required=False,
