@@ -1,14 +1,16 @@
 python3 STICI_V1.1.py \
     --mode train \
     --restart-training 1 \
-    --ref ./data/hapgen/1kgp_30720.vcf \
+    --ref ./data/hapgen/22merged_30720.vcf.gz \
     --tihp 1 \
     --save-dir ./alaki \
     --use-r2 true \
+    --use-focal-loss true \
+    --focal-gamma 1.0 \
     --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "try_1kgp30720_10e_nom3r2" \
+    --wandb-runname "try_focal_gamma1_22merged_10e" \
 
 # python3 STICI_V1.1.py \
 #     --mode impute \
