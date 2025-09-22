@@ -463,7 +463,7 @@ custom_objects = {"STICI": STICI,
 import tensorflow as tf
 
 class ImputationLoss(tf.keras.losses.Loss):
-    def __init__(self, use_r2_loss=True, use_focal_loss=False, focal_gamma=2.0 **kwargs):
+    def __init__(self, use_r2_loss=True, use_focal_loss=False, focal_gamma=2.0, **kwargs):
         super(ImputationLoss, self).__init__(**kwargs)
         self.ce_loss_obj = tf.keras.losses.CategoricalCrossentropy(reduction=tf.keras.losses.Reduction.SUM)
         self.kld_loss_obj = tf.keras.losses.KLDivergence(reduction=tf.keras.losses.Reduction.SUM)
