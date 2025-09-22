@@ -10,7 +10,7 @@ python3 STICI_V1.1.py \
     --epochs 10 \
     --batch-size-per-gpu 3 \
     --use-wandb true \
-    --wandb-runname "try_focal_gamma1_22merged_10e" \
+    --wandb-runname "try_focalloss_gamma1_22merged_10e" \
 
 # python3 STICI_V1.1.py \
 #     --mode impute \
