@@ -463,17 +463,23 @@ custom_objects = {"STICI": STICI,
 import tensorflow as tf
 
 class ImputationLoss(tf.keras.losses.Loss):
-    def __init__(self, use_r2_loss=True, **kwargs):
+    def __init__(self, use_r2_loss=True, use_focal_loss=False, focal_gamma=2.0, **kwargs):
         super(ImputationLoss, self).__init__(**kwargs)
         self.ce_loss_obj = tf.keras.losses.CategoricalCrossentropy(reduction=tf.keras.losses.Reduction.SUM)
         self.kld_loss_obj = tf.keras.losses.KLDivergence(reduction=tf.keras.losses.Reduction.SUM)
         self.use_r2_loss = use_r2_loss
+        self.use_focal_loss = use_focal_loss
+        self.focal_gamma = focal_gamma  # Focusing parameter for focal loss, if gamma = 0, it's equivalent to CE loss
 
         # Store loss values
-        self.ce_loss_val = 0.0
+        # self.ce_loss_val = 0.0
         self.kl_loss_val = 0.0
         if self.use_r2_loss:
             self.r2_loss_val = 0.0
+        if self.use_focal_loss:
+            self.focal_loss_val = 0.0
+        else:
+            self.ce_loss_val = 0.0
     
     def get_ce_loss(self):
         return self.ce_loss_val
@@ -483,7 +489,44 @@ class ImputationLoss(tf.keras.losses.Loss):
     
     def get_r2_loss(self):
         return self.r2_loss_val if self.use_r2_loss else 0.0
+
+    def get_focal_loss(self):
+        return self.focal_loss_val if self.use_focal_loss else 0.0
     
+    def focal_loss(self, y_true, y_pred):
+        """
+        Focal Loss for categorical classification
+        FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
+        """
+        # Ensure numerical stability
+        y_pred = tf.clip_by_value(y_pred, 1e-8, 1.0 - 1e-8)
+        
+        # Calculate cross entropy
+        cross_entropy = -y_true * tf.math.log(y_pred)
+        
+        # Calculate p_t
+        p_t = tf.reduce_sum(y_true * y_pred, axis=-1)
+        
+        # Calculate modulating factor
+        modulating_factor = tf.pow(1.0 - p_t, self.focal_gamma)
+        
+        # Calculate focal loss
+        focal_loss = modulating_factor * cross_entropy
+        
+        # # Apply alpha balancing if needed
+        # if self.alpha is not None:
+        #     # You can implement class-specific alpha here if needed
+        #     alpha_factor = y_true * self.alpha + (1 - y_true) * (1 - self.alpha)
+        #     focal_loss = alpha_factor * focal_loss
+        
+        return tf.reduce_sum(focal_loss, axis=-1)
+        
+    
+    def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
+        mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
+        gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
+        denom = gt_alt_af * (1.0 - gt_alt_af)
+
     def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
         mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
         gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
@@ -496,13 +539,22 @@ class ImputationLoss(tf.keras.losses.Loss):
     def call(self, y_true, y_pred):
         y_true = tf.cast(y_true, y_pred.dtype)
 
-        cat_loss = self.ce_loss_obj(y_true, y_pred)
-        kl_loss = self.kld_loss_obj(y_true, y_pred)
         
-        self.ce_loss_val = cat_loss
+        kl_loss = self.kld_loss_obj(y_true, y_pred)
         self.kl_loss_val = kl_loss
+        
+        # Calculate focal loss if enabled
+        if self.use_focal_loss:
+            focal_loss = tf.reduce_sum(self.focal_loss(y_true, y_pred))
+            self.focal_loss_val = focal_loss
+            cat_loss = 0.0
+            total_loss = focal_loss + kl_loss
+        else:
+            focal_loss = 0.0
+            cat_loss = self.ce_loss_obj(y_true, y_pred)
+            self.ce_loss_val = cat_loss
+            total_loss = cat_loss + kl_loss
 
-        total_loss = cat_loss + kl_loss
         # total_loss = 0
 
         if self.use_r2_loss:
@@ -547,7 +599,8 @@ class LossLogger(tf.keras.callbacks.Callback):
             'total_loss': [],
             'ce_loss': [],
             'kl_loss': [],
-            'r2_loss': []
+            'r2_loss': [],
+            'focal_loss': []
         }
         
     def on_epoch_end(self, epoch, logs=None):
@@ -573,12 +626,20 @@ class LossLogger(tf.keras.callbacks.Callback):
                 self.loss_history['r2_loss'].append(r2_loss_value)
                 logs['r2_loss'] = r2_loss.numpy() if logs is not None else None
         
+        if hasattr(self.model.loss, 'get_focal_loss'):
+            focal_loss = self.model.loss.get_focal_loss()
+            if focal_loss is not None:
+                focal_loss_value = K.get_value(focal_loss)
+                self.loss_history['focal_loss'].append(focal_loss_value)
+                logs['focal_loss'] = focal_loss.numpy() if logs is not None else None
+
         if self.use_wandb and wandb.run is not None:
             wandb.log({
                 'total_loss': self.loss_history['total_loss'][-1] if self.loss_history['total_loss'] else 0,
                 'ce_loss': self.loss_history['ce_loss'][-1] if self.loss_history['ce_loss'] else 0,
                 'kl_loss': self.loss_history['kl_loss'][-1] if self.loss_history['kl_loss'] else 0,
                 'r2_loss': self.loss_history['r2_loss'][-1] if self.loss_history['r2_loss'] else 0,
+                'focal_loss': self.loss_history['focal_loss'][-1] if self.loss_history['focal_loss'] else 0
             })
 
 # class R2Metric(tf.keras.metrics.Metric):
@@ -1735,6 +1796,11 @@ def main():
     parser.add_argument('--use-r2', type=str,
                         help='Whether to use R^2 loss (default=True).',
                         choices=['false', 'true', '0', '1'], default='1')
+    parser.add_argument('--use-focal-loss', type=str,
+                        help='Whether to use focal loss (default=False).',
+                        choices=['false', 'true', '0', '1'], default='0')
+    parser.add_argument('--focal-gamma', type=float, nargs='?', default=1.0,
+                        help='Focusing parameter gamma for focal loss (default: 2.0). Only used if --use-focal-loss is true.')
     # misc
     parser.add_argument('--verbose', type=int, required=False,
                         help='Training verbosity', default=2)
