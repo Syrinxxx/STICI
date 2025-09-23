@@ -521,12 +521,6 @@ class ImputationLoss(tf.keras.losses.Loss):
         
         return tf.reduce_sum(focal_loss, axis=-1)
         
-    
-    def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
-        mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
-        gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
-        denom = gt_alt_af * (1.0 - gt_alt_af)
-
     def calculate_Minimac_R2(self, pred_alt_allele_probs, gt_alt_af):
         mask = tf.logical_or(tf.equal(gt_alt_af, 0.0), tf.equal(gt_alt_af, 1.0))
         gt_alt_af = tf.where(mask, 0.5, gt_alt_af)
@@ -583,11 +577,8 @@ class ImputationLoss(tf.keras.losses.Loss):
                 pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
                 r2_loss += -tf.reduce_sum(self.calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)) * tf.cast(num_remainder_samples, tf.float32)
             
-            # wandb.log({"r2_loss": r2_loss})
-            # self.r2_loss_val = r2_loss
             total_loss += r2_loss
         
-        # wandb.log({"loss": total_loss})
         return total_loss
 
 # Record each loss
@@ -642,103 +633,6 @@ class LossLogger(tf.keras.callbacks.Callback):
                 'focal_loss': self.loss_history['focal_loss'][-1] if self.loss_history['focal_loss'] else 0
             })
 
-# class R2Metric(tf.keras.metrics.Metric):
-#     def __init__(self, name='r2_metric', **kwargs):
-#         super(R2Metric, self).__init__(name=name, **kwargs)
-#         self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
-#         self.sample_count = self.add_weight(name='sample_count', initializer='zeros')
-
-#     def update_state(self, y_true, y_pred, sample_weight=None):
-#         # 处理分组逻辑
-#         batch_size = tf.shape(y_true)[0]
-#         group_size = 4
-#         num_full_groups = batch_size // group_size
-#         num_remainder_samples = batch_size % group_size
-
-#         total_r2 = 0.0
-#         total_valid_variants = 0
-        
-#         # 处理完整的分组
-#         if num_full_groups > 0:
-#             y_true_grouped = tf.reshape(y_true[:num_full_groups * group_size], 
-#                                        (num_full_groups, group_size, -1, y_true.shape[-1]))
-#             y_pred_grouped = tf.reshape(y_pred[:num_full_groups * group_size], 
-#                                        (num_full_groups, group_size, -1, y_pred.shape[-1]))
-            
-#             for i in range(num_full_groups):
-#                 # 计算每个变异的等位基因频率
-#                 gt_alt_af = tf.reduce_mean(tf.argmax(y_true_grouped[i], axis=-1, output_type=tf.float32), axis=0)
-#                 pred_alt_allele_probs = tf.reduce_sum(y_pred_grouped[i][:, :, 1:], axis=-1)
-                
-#                 # 调用外部函数
-#                 r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
-#                 total_r2 += tf.reduce_sum(r2_values)
-#                 total_valid_variants += tf.reduce_sum(tf.cast(tf.not_equal(r2_values, 0.0), tf.float32))
-
-#         # 处理剩余的样本
-#         if num_remainder_samples > 0:
-#             remainder_start_index = num_full_groups * group_size
-#             y_true_remainder = y_true[remainder_start_index:]
-#             y_pred_remainder = y_pred[remainder_start_index:]
-
-#             # 计算每个变异的等位基因频率
-#             gt_alt_af = tf.reduce_mean(tf.argmax(y_true_remainder, axis=-1, output_type=tf.float32), axis=0)
-#             pred_alt_allele_probs = tf.reduce_sum(y_pred_remainder[:, :, 1:], axis=-1)
-            
-#             # 调用外部函数
-#             r2_values = calculate_Minimac_R2(pred_alt_allele_probs, gt_alt_af)
-#             total_r2 += tf.reduce_sum(r2_values)
-#             total_valid_variants += tf.reduce_sum(tf.cast(tf.not_equal(r2_values, 0.0), tf.float32))
-
-#         # 更新状态变量
-#         self.r2_sum.assign_add(total_r2)
-#         self.sample_count.assign_add(tf.cast(total_valid_variants, tf.float32))
-
-#     def result(self):
-#         return tf.math.divide_no_nan(self.r2_sum, self.sample_count)
-
-#     def reset_state(self):
-#         self.r2_sum.assign(0.0)
-#         self.sample_count.assign(0.0)
-
-# class MinimacR2Metric(tf.keras.metrics.Metric):
-#     """
-#     A custom Keras metric to calculate the average Minimac R2 score
-#     across all batches.
-#     """
-#     def __init__(self, name='minimac_r2', **kwargs):
-#         super(MinimacR2Metric, self).__init__(name=name, **kwargs)
-#         self.r2_sum = self.add_weight(name='r2_sum', initializer='zeros')
-#         self.sample_count = self.add_weight(name='sample_count', initializer='zeros')
-
-#     def update_state(self, y_true, y_pred, sample_weight=None):
-#         # Flatten the tensors to handle multi-dimensional outputs if needed
-#         y_true = tf.cast(y_true, tf.float32)
-#         y_pred = tf.cast(y_pred, tf.float32)
-
-#         # Assuming -1 is the missing value
-#         mask = tf.cast(tf.math.not_equal(y_true, -1.0), tf.float32)
-
-#         # Calculate R2 for the current batch
-#         batch_r2 = calculate_Minimac_R2(y_true, y_pred, mask)
-#         batch_r2 = tf.reduce_mean(batch_r2)
-        
-#         # Count the number of samples in the current batch
-#         batch_size = tf.cast(tf.shape(y_true)[0], tf.float32)
-        
-#         # Update the state variables
-#         self.r2_sum.assign_add(batch_r2 * batch_size)
-#         self.sample_count.assign_add(batch_size)
-
-#     def result(self):
-#         # Return the overall average R2 score
-#         return tf.math.divide_no_nan(self.r2_sum, self.sample_count)
-
-#     def reset_state(self):
-#         # Reset the state variables at the beginning of each epoch
-#         self.r2_sum.assign(0.0)
-#         self.sample_count.assign(0.0)
-
 
 #	Pearson correlation–style R²
 class MinimacR2Metric(tf.keras.metrics.Metric):
@@ -760,19 +654,18 @@ class MinimacR2Metric(tf.keras.metrics.Metric):
         Assumes last dimension = genotype categories (e.g., 3 for diploid: [0,1,2]).
         """
 
-        # 转换为 float32
+        # to float32
         y_true = tf.cast(y_true, tf.float32)
         y_pred = tf.cast(y_pred, tf.float32)
 
-        # one-hot → genotype dosage (取 argmax 就是GT，或者加权求期望值是dosage)
+        # one-hot → genotype dosage
         true_dosage = tf.cast(tf.argmax(y_true, axis=-1), tf.float32)  # (batch, variants)
         pred_dosage = tf.reduce_sum(y_pred * tf.range(tf.shape(y_pred)[-1], dtype=tf.float32), axis=-1)
 
-        # 按 variant 计算均值
+        # per variant means
         true_mean = tf.reduce_mean(true_dosage, axis=0)  # (variants,)
         pred_mean = tf.reduce_mean(pred_dosage, axis=0)  # (variants,)
 
-        # 协方差 & 方差
         cov = tf.reduce_mean((true_dosage - true_mean) * (pred_dosage - pred_mean), axis=0)
         var_true = tf.reduce_mean(tf.square(true_dosage - true_mean), axis=0)
         var_pred = tf.reduce_mean(tf.square(pred_dosage - pred_mean), axis=0)
@@ -780,7 +673,7 @@ class MinimacR2Metric(tf.keras.metrics.Metric):
         # per-variant R²
         r2_per_variant = tf.math.divide_no_nan(tf.square(cov), var_true * var_pred)
 
-        # 累加
+        # cumulate
         self.r2_sum.assign_add(tf.reduce_sum(r2_per_variant))
         self.variant_count.assign_add(tf.cast(tf.shape(r2_per_variant)[0], tf.float32))
 
@@ -845,16 +738,11 @@ def create_model(args):
                              offset_before=args["offset_before"],
                              offset_after=args["offset_after"])
     optimizer = tfa.optimizers.LAMB(learning_rate=args["lr"])
-    # optimizer = tf.optimizers.AdamW(learning_rate=args["lr"], weight_decay=1e-5)
-    
-    # metrics = [
-    #         tf.keras.metrics.CategoricalAccuracy(),
-    #         R2Metric()
-    #     ]
+
     metrics = [
         tf.keras.metrics.CategoricalAccuracy(name='accuracy'),
         MinimacR2Metric(name='r2_score'),
-        # Minimac3R2Metric(name='r2_score_minimac3')
+        # Minimac3R2Metric(name='r2_score_minimac3')  # if real data training, don't use this metric, cz it assume  0,1,2 are the only genotype categories
     ]
     
 
@@ -894,8 +782,6 @@ def create_callbacks(metric="loss", save_path=".", use_wandb=False):
     callbacks = [
         reducelr,
         earlystop,
-        # LossLogger(use_wandb=use_wandb),
-        # checkpoint
     ]
 
     if use_wandb:  
@@ -1411,10 +1297,10 @@ def get_test_dataset(x, batch_size, depth, strategy):
 def get_test_dataset_with_masking(x, batch_size, depth, strategy, min_mr, max_mr, ground_truth):
     AUTO = tf.data.AUTOTUNE
     
-    # 创建包含输入和ground truth的数据集
+    # create dataset with input and ground truth
     dataset = tf.data.Dataset.from_tensor_slices((x, ground_truth))
     
-    # 使用add_attention_mask进行masking
+    # masking
     dataset = dataset.map(
         lambda xx, yy: add_attention_mask(xx, yy, depth, min_mr, max_mr),
         num_parallel_calls=AUTO,
@@ -1516,8 +1402,7 @@ def train_the_model(args) -> None:
             continue
 
         pprint(f"Training on chunk {w + 1}/{len(break_points) - 1}")
-        # if args.use_wandb:
-        #     wandb.log({"current_chunk": w + 1, "total_chunks": len(break_points) - 1})
+
         final_start_pos = max(0, break_points[w] - 2 * args.co)
         final_end_pos = min(dr.VARIANT_COUNT, break_points[w + 1] + 2 * args.co)
         offset_before = break_points[w] - final_start_pos
